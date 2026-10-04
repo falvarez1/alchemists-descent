@@ -42,3 +42,37 @@ Missing names fall back through `FALLBACK` in the runtime, so a partial atlas st
 
 Cut output keeps the downsampled colours snapped to the sheet's own 28-colour palette and grows a one-pixel dark outline
 outside the silhouette (the concept's crisp outline does not survive an area downsample on its own).
+
+## Patching frames in a shipped atlas
+
+A frame that came out wrong (a pose that lost its weapon) is replaced without touching the rest of the atlas:
+
+1. Unpack what ships: `node scripts/arena-sprites/unpack-atlas.mjs <id> <dir>/<id>-current` (unpack then pack is bit for
+   bit the same atlas).
+2. Generate a replacement sheet with the fighter's chosen sheets A and B as the references (several fighters can share a
+   sheet, one per row; then cut each with `--anchor` on that fighter's first cell). Cell 1 of each fighter is a copy of
+   its idle stance: the cutter scales by it, so the new frames land at the shipped scale (check the cut `pidle` against the
+   atlas `idle0`: same height). Spare cells hold second takes (`fall_b`, `airdodge_b`, ...).
+3. Copy the picked cuts, renamed to the frame they replace, into `<dir>/<id>-pick` with a manifest, and pack with it last:
+   `node scripts/arena-sprites/pack-atlas.mjs <id> <dir>/<id>-current <dir>/<id>-pick` (later directories win).
+
+The patch sheets are kept as `sprite-sources/<id>-patch.webp` (`ilyra-mara-patch`, `brann-nox-thorne-patch` hold several
+fighters); their prompts and which cells replaced which frames are in `SPRITE-PROMPTS.md`.
+
+## Bust portraits
+
+The lobby, HUD and results show a painted bust per fighter: `public/assets/arena/fighters/<id>/bust.webp`, 768 x 768, no
+alpha. All ten share one framing so the UI crops them with one rule: three-quarter view facing RIGHT (P2 mirrors with
+CSS), the eye line (eyes, visor slit, or the glints in a hood) at 38% from the top, the face at 47 to 52% across, eye to
+chin about 9.5% of the height, the prop hand on the right (x 60 to 95%). The ground is the painted dark slate with faint
+smoke, lifted onto `#111a24`, and the outer 7% of every side fades to exactly `#111a24`: on a panel of that colour the
+edges vanish with no mask; on any other a CSS mask over the outer 10% does it.
+
+1. Generate (gpt-image-2, 1:1, 1K, high) with the fighter's portrait and animation sheet as references. Ilyra's bust came
+   first from the two references alone; every other bust also takes her approved bust as the LAST reference with the
+   instruction to copy its framing, lighting and rendering but not its character. Prompts in `SPRITE-PROMPTS.md`.
+2. Keep the master as `sprite-sources/<id>-bust.webp`, measure its eye line and head size, and record them in
+   `scripts/arena-sprites/bust-framing.json` (`ex`/`ey` the eye line as fractions of the master, `s` the zoom, `tx` where
+   the eyes land across).
+3. Frame: `node scripts/arena-sprites/make-bust.mjs [id ...] [--size 768] [--sheet <contact.png>]` writes `bust.webp` (and
+   a contact sheet with the shared eye line drawn; the current one is `sprite-sources/busts-contact.webp`).

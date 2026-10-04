@@ -322,3 +322,259 @@ ROW 2: (1) AERIAL windup: midair, knees tucked, staff pulled back over the shoul
 ROW 3: (1) SHIELD guard: braced crouch, the staff held upright in front of the body and the free forearm raised before the hood; (2) SHIELD broken: dazed and hunched, wobbling, hood lolling, arms hanging, staff tip dragging; (3) GROUND DODGE: low, fast crouching dash forward, robe streaming; (4) AIR DODGE: midair tucked roll wrapped in the robe; (5) LEDGE HANG: hanging by the raised free hand from a ledge corner above the head (the hand at the top-right of the figure), body dangling straight below, the staff in the other hand, the ledge itself not drawn; (6) LEDGE CLIMB: pulling up, elbows bent, one knee raised to the level of the hands, the ledge itself not drawn.
 
 STYLE: designed to read at small size in game: bold silhouette, pointed hood, ragged robe, the vine staff clearly visible, clearly separated limbs. Chunky pixel art with clearly visible square pixels; the standing pose is about 60 art pixels tall.
+
+# Bust portraits (gpt-image-2, 1:1, 1K, high)
+
+Provenance for `public/assets/arena/fighters/*/bust.webp` (masters: `sprite-sources/<id>-bust.webp`; framing:
+`scripts/arena-sprites/bust-framing.json` + `make-bust.mjs`). One generation each except Ilyra (two; the first was kept).
+References: the fighter's portrait, then its animation sheet; every bust after Ilyra's also takes her approved bust LAST
+as the framing reference.
+
+## Ilyra Voss, bust
+
+References: portrait, animation sheet. Chosen: generation `MoivJId8ZeS3Udwc3VPT` (one of two).
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Ilyra Voss, exactly as shown in the reference images. The first reference is her official portrait and the second is her animation reference sheet: they are canonical, match her face, costume and colours exactly. A young woman alchemist-gunslinger: a wide-brimmed cream felt hat with a dark band, long pale platinum-blonde hair worn in a long braid over her shoulder, pale skin, a calm focused expression, a teal long coat with a high collar, brass buttons and brass trim, leather straps and a belt of small glowing amber flasks; in her right hand a brass pistol-wand.
+
+COMPOSITION (all ten fighters of this game share it exactly, so the UI can crop them the same way): a square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: her body and face turned toward the RIGHT side of the image, looking right. Her head is centred at about 42% from the left edge; her eyes sit on a horizontal line 38% down from the top edge; her face, from eyebrows to chin, is about 18% of the image height (the hat brim rises above that). Her right hand is raised into frame in front of her chest on the right side of the image, holding the brass pistol-wand pointed up and toward the right, its muzzle glowing faintly amber; the whole hand and the pistol-wand are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, warm amber rim light from the pistol-wand's glow on her face and hat brim, cool shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind her shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Brann Rook, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `Ga0wHVmv4rwjQvBqhTgb`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Brann Rook, exactly as shown in the first two references (his official portrait and his animation reference sheet: canonical, match his armour, helmet and colours exactly). A hulking armoured knight in dark gunmetal-iron riveted plate armour like an old diving suit, with bronze-brass trim, rivets and heavy rounded pauldrons; a round domed iron helmet with a barred grille visor, warm amber light glowing behind the bars (no face visible); a small glowing brass lantern hanging on a hook behind his shoulder. Broad, massive shoulders filling the width of the bust.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and helmet turned toward the RIGHT side of the image, looking right. The helmet is centred at about 42% from the left edge; the glowing visor slit sits on a horizontal line 38% down from the top edge. His huge armoured gauntlet is raised on the right side of the image, gripping the top edge of his tall iron tower shield (brass rim, round brass boss), the upper part of the shield standing in front of his chest on the right. The whole hand and the shield's top edge are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, warm amber light from the visor and the lantern glinting on brass rivets, cool blue-grey steel shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Mara Quell, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `RSjAtagU216wjsNrpANS`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Mara Quell, exactly as shown in the first two references (her official portrait and her animation reference sheet: canonical, match her robe and colours exactly). A deep violet-purple hooded robe with a tall pointed hood whose shadowed opening hides her face completely (only darkness inside, with the faintest glint where eyes would be), a short layered shoulder cape, wide bell sleeves, gold trim and gold circular rune embroidery.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and hood turned toward the RIGHT side of the image, looking right. The hood is centred at about 42% from the left edge; the shadowed face opening sits on a horizontal line 38% down from the top edge. Her hand, half hidden in the wide violet sleeve, is raised on the right side of the image holding a large polished brass hand bell up by its ring handle at shoulder height, the bell's mouth turned toward the right. The whole hand and the bell are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, warm golden light glancing off the brass bell onto the violet hood and gold embroidery, cool purple shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Sable Fen, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `oiakAKlmQh3iVDOnlZoD`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Sable Fen, exactly as shown in the first two references (the official portrait and the animation reference sheet: canonical, match the costume and colours exactly). A ragged moss-green hooded cloak with tattered edges, the face hidden in the hood's deep shadow except for two faint pale-green glowing eyes, a dark green leather bodysuit with brown leather straps, bandage-wrapped forearms, a small glowing green vial on a strap.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and hood turned toward the RIGHT side of the image, looking right. The hood is centred at about 42% from the left edge; the glowing eyes sit on a horizontal line 38% down from the top edge. A bandaged hand is raised on the right side of the image gripping the wooden shaft of the long pole-hook (wood bound with rope) at chest height, the shaft rising upright so its curved sickle-like hook blade curls beside the hood on the right. The whole hand and the hook blade are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, a pale green glow from the eyes and the vial glinting on the hook blade, deep green shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Kest Rel, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `lKkEA6wVfRacYHksxtqT`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Kest Rel, exactly as shown in the first two references (the official portrait and the animation reference sheet: canonical, match the costume and colours exactly). A lean rooftop rogue: a red bandana headwrap with a long red scarf streaming behind, a dark cloth mask over the lower face, small glowing orange eyes, a dark grey-brown padded jacket with shoulder guards, brown leather straps, red forearm guards.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and face turned toward the RIGHT side of the image, looking right. The head is centred at about 42% from the left edge; the eyes sit on a horizontal line 38% down from the top edge. A gloved fist with a red forearm guard is raised on the right side of the image at chest height, holding the steel grappling claw (a curved hooked blade) up and toward the right, a short loop of its chain hanging below the fist. The whole hand and the claw are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, warm orange light from the eyes, cold steel glints on the claw, the red scarf vivid.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Nox Calder, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `L4U3D5zqwdudvKPKtAt0`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Nox Calder, exactly as shown in the first two references (the official portrait and the animation reference sheet: canonical, match the costume and colours exactly). A charcoal-black hooded long coat with a wrapped cowl scarf, the face hidden in the hood's shadow except for two small glowing amber eyes, dark leather armour with riveted shoulder plates and steel bracers.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and hood turned toward the RIGHT side of the image, looking right. The hood is centred at about 42% from the left edge; the glowing eyes sit on a horizontal line 38% down from the top edge. A gloved hand with a steel bracer is raised on the right side of the image holding a black iron lantern up by its handle at shoulder height, a warm amber flame inside. The whole hand and the lantern are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, the lantern's warm amber light catching the edge of the hood, the scarf and the rivets, everything else in deep cool shadow.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Edda Morrow, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `vr3tnFcpQohPlYgQIfTj`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Edda Morrow, exactly as shown in the first two references (her official portrait and her animation reference sheet: canonical, match her face, costume and colours exactly). A paladin: long wavy golden-blonde hair, a calm resolute face, a thin golden sunburst halo ring close behind her head, a long white-and-cream coat with gold trim over a dark navy-teal underdress, polished gold shoulder pauldrons and a gold chest plate.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: her body and face turned toward the RIGHT side of the image, looking right. Her head is centred at about 42% from the left edge; her eyes sit on a horizontal line 38% down from the top edge. Her gauntleted hand is raised on the right side of the image at chest height holding her golden mace upright, its faceted pale-blue glass crystal head beside her face. The whole hand and the mace head are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, warm golden light from the halo on her hair and pauldrons, a cool pale-blue glint from the crystal, navy shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Selene Wraith, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `g56w48TWKGYtVtmIAmY8`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Selene Wraith, exactly as shown in the first two references (her official portrait and her animation reference sheet: canonical, match her face, costume and colours exactly). Slim and athletic: a long silver-white high ponytail, a dark navy mask over the lower face, pale skin around sharp eyes, a dark blue-black fitted armoured bodysuit with segmented plates, bronze buckles and straps, a long dark-blue scarf trailing behind.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: her body and face turned toward the RIGHT side of the image, looking right. Her head is centred at about 42% from the left edge; her eyes sit on a horizontal line 38% down from the top edge. Her gloved hand is raised on the right side of the image at chest height holding her short spear upright, its glowing icy-blue crystal blade beside her face. The whole hand and the spear blade are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, cold cyan light from the spear blade on her silver hair and mask, bronze glints, deep navy shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Rusk Emberjaw, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `uhppti6vT60eh3qKbvDb`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Rusk Emberjaw, exactly as shown in the first two references (the official portrait and the animation reference sheet: canonical, match the look and colours exactly). A hulking brute: an iron mask-helmet with a grille jaw and glowing orange eye slits (no face visible), a short smokestack and pipes rising behind the shoulder, a bare bronze-brown muscular chest with a glowing orange furnace core set in its centre, heavy rusted iron shoulder plates and banded iron forearm gauntlets. Massive shoulders filling the width of the bust.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and mask turned toward the RIGHT side of the image, looking right. The masked head is centred at about 42% from the left edge; the glowing eye slits sit on a horizontal line 38% down from the top edge. One enormous iron-banded fist is raised and clenched on the right side of the image at chest height, its knuckles glowing molten orange. The whole fist is inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, hot orange light from the furnace core, eye slits and knuckles on rusted iron and bronze skin, deep brown shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+## Father Thorne, bust
+
+References: portrait, animation sheet, Ilyra's approved bust. Generation `1ydqwXZkwU3C2XUYVp24`.
+
+Game UI art: a painted pixel-art BUST PORTRAIT for a fighting game's character-select screen and HUD.
+
+CHARACTER: Father Thorne, exactly as shown in the first two references (the official portrait and the animation reference sheet: canonical, match the face, robe and colours exactly). A hooded priest in a long deep moss-green robe with a lighter green hood rim, moss and small creeping vines on the shoulders, a pale gaunt face shadowed inside the hood, brown leather straps, a brass cross pendant hanging on the chest.
+
+COMPOSITION: copy the last reference exactly. It is the approved bust portrait of ANOTHER fighter from the same set: match its framing, camera distance, head size, eye line, pose angle, lighting setup, pixel-art rendering and background exactly, but do NOT copy its character, clothes, hat, hair or colours. A square image. Head, shoulders and upper chest, the bust cut off by the bottom edge at mid-chest. Three-quarter view: the body and hooded face turned toward the RIGHT side of the image, looking right. The head is centred at about 42% from the left edge; the eyes sit on a horizontal line 38% down from the top edge. A pale bony hand is raised on the right side of the image at chest height gripping a gnarled wooden staff wound with green vines and leaves, held upright so its small glowing green bud sits beside the hood. The whole hand and the staff's top are inside the frame.
+
+STYLE: rich, detailed pixel-art painting, like a premium 16-bit character portrait: clearly visible square pixels, crisp dark outlines, painterly three-to-five tone shading, dramatic chiaroscuro, a soft green glow from the bud on the gaunt face and the hood rim, a warm brass glint on the cross, deep green shadows.
+
+BACKGROUND: a flat, very dark blue-slate (#111a24) with faint soft grey-blue smoke drifting behind the shoulders; toward all four edges the background fades smoothly to pure flat #111a24. No frame, no border, no vignette ring, no text, no letters, no logo, no name plate, no UI.
+
+# Weapon patch sheets (gpt-image-2, 3:2, 2K, high)
+
+Replacement frames for poses that lost the weapon or prop (see SPRITES.md, "Patching frames"). References: each fighter's
+chosen sheet A then sheet B (in row order for the shared sheets). One generation each. Masters:
+`sprite-sources/<id>-patch.webp`, `ilyra-mara-patch.webp`, `brann-nox-thorne-patch.webp`.
+
+## Edda Morrow, weapon patch
+
+Generation `vZTT8qufKoRQZZ8YC9OA`. Frames that replaced the atlas's: edda-morrow: rise, apex, fall, fastfall, hurt, tumble, grab, shield, shield_broken, airdodge.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the two reference sheets.
+
+CHARACTER: Edda Morrow, exactly as drawn in the two references: the first is her approved locomotion sheet and the second her approved combat sheet. Match their rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones. Long wavy golden-blonde hair, a thin golden sunburst halo ring close behind the head, a long white-and-cream coat with gold trim over a dark navy-teal underdress and trousers, gold pauldrons and chest plate, dark boots with gold greaves; a golden mace with a faceted pale-blue crystal head in one hand; a tall pointed oval stained-glass shield with a gold rim on the other arm. MOST IMPORTANT: in EVERY frame she still holds the golden crystal-headed mace, clearly visible and drawn in full, never hidden behind her body or the shield, never dropped; and the shield stays on her arm.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite, including the mace and shield, stays entirely inside its own cell with clear magenta space between neighbouring sprites. All sprites at the SAME scale as the reference sheets: the standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no ledge or wall blocks, no shadows, no motion echoes, no light rays, no magic effects, no particles: only the character on magenta.
+
+ROW 1: (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) jump take-off, rising, knees tucked, the mace raised up and back over her shoulder, shield in front; (3) jump apex, legs bent, the mace held out to the side at shoulder height, shield in front; (4) falling, the mace arm raised high for balance with the mace clearly in her hand, shield arm out to the side; (5) fast-fall, compact, knees tucked, plummeting behind the shield, the mace pointing down below her; (6) hurt recoil, head and torso snapped back, the mace still gripped and flung out behind her.
+ROW 2: (1) launched tumble, body nearly horizontal, spinning, the mace gripped in one outstretched hand, the shield on the other arm; (2) GRAB reach: the shield-arm hand reaching far forward past the shield to seize, the mace held back and up in the other hand; (3) THROW: the empty arm sweeping forward and upward in follow-through after releasing, the mace held low behind her in the other hand; (4) SHIELD guard: braced crouch behind the stained-glass shield, the mace raised above the shield's top edge, ready; (5) SHIELD broken: dazed and hunched, wobbling, head lolling, arms hanging, the mace dangling from her limp hand, the shield tip dragging; (6) GROUND DODGE: low, fast crouching dash forward, coat streaming, the mace held back along her body, shield in front.
+ROW 3: (1) AIR DODGE: midair tucked roll curled behind the shield, the crystal mace head sticking out clearly above the shield; (2) LEDGE HANG: hanging by her raised shield-arm hand from a ledge corner above her head (the hand at the top-right of the figure), body dangling straight below, the mace hanging from her other hand (the ledge itself not drawn); (3) LEDGE CLIMB: pulling herself up, elbows bent, one knee raised to the level of her hands, the mace gripped in one hand (the ledge itself not drawn); (4) another jump take-off, rising, knees tucked, the mace held high overhead; (5) another falling pose, both arms up, the mace clearly in her raised hand; (6) another fast-fall, compact, the mace held tight against the shield.
+
+STYLE: designed to read at small size in game: bold silhouette, golden hair and halo, the mace and the stained-glass shield clearly separated from the body. Chunky pixel art with clearly visible square pixels; the standing pose is about 60 art pixels tall.
+
+## Kest Rel, weapon patch
+
+Generation `OiyrXalCf5YaOKSj4tIE`. Frames that replaced the atlas's: kest-rel: rise, fall, hurt, shield, throw, dodge, airdodge <- airdodge_b, ledge_climb, grab.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the two reference sheets.
+
+CHARACTER: Kest Rel, exactly as drawn in the two references: the first is the approved locomotion sheet and the second the approved combat sheet of this same character. Match their rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones. A lean, wiry rooftop rogue: a red bandana headwrap with a long red scarf streaming behind, a dark cloth mask over the lower face, small glowing orange eyes, a dark grey-brown padded jacket with shoulder guards, a brown belt with a brass buckle, a short tattered tabard, dark trousers, red knee pads and red forearm guards, red-brown boots; a steel grappling claw (a curved hooked blade) on a short chain. MOST IMPORTANT: in EVERY frame the steel claw is still in one hand or dangling from that hand on its chain, clearly visible and drawn in full, never hidden behind the body, never dropped.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite, including the claw and chain, stays entirely inside its own cell with clear magenta space between neighbouring sprites. All sprites at the SAME scale as the reference sheets: the standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no ledge or wall blocks, no shadows, no motion echoes, no smoke, no sparks, no particles: only the character on magenta.
+
+ROW 1: (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) jump take-off, rising, knees tucked, the claw swinging on its chain below his forward hand; (3) falling, arms up for balance, the claw gripped in the raised hand, its chain dangling; (4) hurt recoil, head and torso snapped back, the claw still in his hand, the chain flung out; (5) SHIELD guard: braced crouch, red forearm guards crossed in front of the face, the claw hanging on its chain from one fist; (6) THROW: the free arm sweeping forward and upward in follow-through after releasing, the claw held low behind in the other hand.
+ROW 2: (1) GROUND DODGE: low, fast crouching dash forward, scarf streaming, the claw trailing on its chain from his back hand; (2) AIR DODGE: midair tucked roll, the claw clutched against his chest with its chain looped around his forearm, clearly visible; (3) LEDGE CLIMB: pulling himself up, elbows bent, one knee raised to the level of his hands, the claw hanging from his wrist on its chain (the ledge itself not drawn); (4) GRAB reach: the empty free hand reaching far forward to seize, the claw held back in the other hand on its chain; (5) another jump take-off, rising, the claw held up at shoulder height; (6) another falling pose, the claw dangling below on its chain.
+ROW 3: (1) another hurt recoil, the claw flung out to the side on its chain; (2) another SHIELD guard, forearms crossed, the claw gripped in the front fist; (3) another GROUND DODGE, the claw held forward low; (4) another AIR DODGE roll, the hooked blade sticking out of the curled body; (5) another LEDGE CLIMB, the claw gripped in the climbing hand; (6) another THROW follow-through, the claw swinging on its chain behind him.
+
+STYLE: designed to read at small size in game: bold silhouette, long red scarf, the steel claw clearly separated from the body. Chunky pixel art with clearly visible square pixels; the standing pose is about 60 art pixels tall.
+
+## Selene Wraith, weapon patch
+
+Generation `2KKbl7hrHzP8WHwiIAs5`. Frames that replaced the atlas's: selene-wraith: fall, fastfall, hurt, tumble, shield, dodge, airdodge.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the two reference sheets.
+
+CHARACTER: Selene Wraith, exactly as drawn in the two references: the first is her approved locomotion sheet and the second her approved combat sheet. Match their rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones. Slim and athletic: a long silver-white high ponytail, a dark navy mask over the lower face, a dark blue-black fitted armoured bodysuit with segmented plates, bronze buckles and straps, fingerless gloves, a long dark-blue scarf trailing behind, dark boots with bronze fittings; a short spear with a glowing icy-blue crystal blade. MOST IMPORTANT: in EVERY frame she still holds the short spear, clearly visible and drawn in full with its icy-blue blade, never hidden behind her body, never dropped.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite, including the spear, stays entirely inside its own cell with clear magenta space between neighbouring sprites. All sprites at the SAME scale as the reference sheets: the standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no shadows, no afterimages, no ghost copies, no motion echoes, no speed lines, no magic effects, no particles: only the one solid character on magenta.
+
+ROW 1: (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) falling, arms up for balance, the spear held high in one raised hand, blade up; (3) fast-fall, compact, knees tucked, plummeting, the spear held point-down below her; (4) hurt recoil, head and torso snapped back, the spear still gripped and flung out to the side; (5) launched tumble, body nearly horizontal, spinning, the spear gripped in one outstretched hand; (6) SHIELD guard: braced crouch, forearms crossed in front of the face, the spear held upright against her forearm, blade above her head.
+ROW 2: (1) GROUND DODGE: low, fast crouching dash forward, scarf and ponytail streaming, the spear held level along her body; (2) AIR DODGE: midair tucked roll, the spear held close along her body with the icy blade sticking out clearly; (3) another falling pose, the spear held out to the side; (4) another fast-fall, the spear tucked under her arm, blade forward; (5) another hurt recoil, the spear swinging behind her; (6) another tumble, the spear spinning in her hand.
+ROW 3: (1) another SHIELD guard, crouched, the spear held across her body as a bar; (2) another GROUND DODGE, the spear trailing behind; (3) another AIR DODGE roll, the spear blade pointing forward out of the roll; (4) another falling pose, both hands on the spear above her head; (5) another fast-fall, the spear held vertical beside her; (6) another hurt recoil, the spear held tight to her chest.
+
+STYLE: designed to read at small size in game: bold silhouette, silver ponytail, trailing scarf, the spear clearly separated from the body. Chunky pixel art with clearly visible square pixels; the standing pose is about 60 art pixels tall.
+
+## Sable Fen, weapon patch
+
+Generation `FL15oqa3U2xzWU7miBXQ`. Frames that replaced the atlas's: sable-fen: fall, grab, throw, dodge, airdodge, ledge_climb.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the two reference sheets.
+
+CHARACTER: Sable Fen, exactly as drawn in the two references: the first is the approved locomotion sheet and the second the approved combat sheet of this same character. Match their rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones. A ragged moss-green hooded cloak with tattered edges, the face hidden in the hood's shadow except for faint glowing eyes, a dark green leather bodysuit with brown leather straps, bandage-wrapped forearms and shins, brown wrapped boots; a long wooden pole-hook (a wooden shaft bound with rope, ending in a curved pale sickle-like hook blade). MOST IMPORTANT: in EVERY frame the long pole-hook is still in one or both hands, clearly visible and drawn in full with its curved blade, never hidden behind the body, never dropped.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite, including the whole pole-hook, stays entirely inside its own cell with clear magenta space between neighbouring sprites. All sprites at the SAME scale as the reference sheets: the standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no ledge or wall blocks, no shadows, no motion echoes, no slime, no smoke, no magic effects, no particles: only the character on magenta.
+
+ROW 1: (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) falling, arms up for balance, the pole-hook held high in one raised hand, the hook blade above; (3) GRAB reach: the empty free hand reaching far forward to seize, the pole-hook held back and upright in the other hand; (4) THROW: the free arm sweeping forward and upward in follow-through after releasing, the pole-hook held low behind in the other hand; (5) GROUND DODGE: low, fast crouching dash forward, cloak streaming, the pole-hook held level along the body in both hands; (6) AIR DODGE: midair tucked roll wrapped in the cloak, the pole-hook held close along the body with the hook blade sticking out clearly.
+ROW 2: (1) LEDGE CLIMB: pulling up, elbows bent, one knee raised to the level of the hands, the pole-hook gripped in one hand along the arm (the ledge itself not drawn); (2) another falling pose, the pole-hook held across the body in both hands; (3) another GRAB reach, the pole-hook resting on the shoulder; (4) another THROW follow-through, the pole-hook held upright behind; (5) another GROUND DODGE, the pole-hook trailing behind; (6) another AIR DODGE roll, the hook blade pointing forward out of the roll.
+ROW 3: (1) another LEDGE CLIMB, the pole-hook hooked over the shoulder; (2) another falling pose, the pole-hook held out to the side; (3) another GRAB reach, the pole-hook held low behind; (4) another THROW, the pole-hook raised behind the head; (5) another GROUND DODGE, the pole-hook held forward low; (6) another LEDGE CLIMB, the pole-hook gripped in the climbing hand.
+
+STYLE: designed to read at small size in game: bold silhouette, pointed hood, ragged cloak, the long hooked pole clearly visible and separated from the body. Chunky pixel art with clearly visible square pixels; the standing pose is about 60 art pixels tall.
+
+## Ilyra Voss and Mara Quell, weapon patch
+
+Generation `eC2Xud0GlkIVNElJwqFE`. Frames that replaced the atlas's: mara-quell: apex, fall, fastfall, shield_broken, airdodge, ledge_hang; ilyra-voss: fall, fastfall, shield.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the reference sheets.
+
+TWO CHARACTERS on this sheet, each exactly as drawn in their references (match rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones):
+- ROW 1 is Ilyra Voss (references 1 and 2: her approved locomotion and combat sheets): wide-brimmed cream hat, long pale braided hair, teal long coat with brass trim, dark trousers, brown boots, a small brass pistol-wand in her right hand.
+- ROWS 2 and 3 are Mara Quell (references 3 and 4: her approved locomotion and combat sheets): a deep violet hooded robe with a pointed hood hiding the face, wide bell sleeves, gold trim and rune embroidery, brown boots, a large polished brass hand bell held by its ring handle.
+MOST IMPORTANT: in EVERY frame the character still holds her item, clearly visible and drawn in full, never hidden behind the body, never dropped: Ilyra's brass pistol-wand, Mara's brass hand bell.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite stays entirely inside its own cell with clear magenta space between neighbouring sprites. Both characters at the SAME scale as their reference sheets: a standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no ledge or wall blocks, no shadows, no motion echoes, no sound rings, no muzzle flash, no magic effects, no particles: only the characters on magenta.
+
+ROW 1 (Ilyra): (1) idle ready stance, identical to the first frame of her locomotion reference (scale reference); (2) falling, arms up for balance, the pistol-wand clearly in her raised right hand; (3) fast-fall, compact, knees tucked, the pistol-wand held against her chest, barrel pointing forward; (4) SHIELD guard: braced crouch, forearms raised in front of her face, the pistol-wand gripped in her front hand, barrel up; (5) LEDGE HANG: hanging by her raised left hand from a ledge corner above her head (the hand at the top-right of the figure), body dangling straight below, the pistol-wand held in her lowered right hand (the ledge itself not drawn); (6) LEDGE CLIMB: pulling herself up, elbows bent, one knee raised to the level of her hands, the pistol-wand in her right hand (the ledge itself not drawn).
+ROW 2 (Mara): (1) idle ready stance, identical to the first frame of her locomotion reference (scale reference); (2) jump apex, legs bent, the bell held out to the side at shoulder height; (3) falling, arms up for balance, the bell clearly in her raised hand; (4) fast-fall, compact, knees tucked, plummeting, the bell held below her; (5) SHIELD broken: dazed and hunched, wobbling, hood lolling, arms hanging, the bell dangling from her limp hand; (6) AIR DODGE: midair tucked roll wrapped in the robe, the brass bell sticking out clearly from the curled body.
+ROW 3 (Mara): (1) LEDGE HANG: hanging by her raised free hand from a ledge corner above her head (the hand at the top-right of the figure), body dangling straight below, the bell hanging from her other hand (the ledge itself not drawn); (2) another jump apex, the bell raised above her head; (3) another falling pose, the bell held out to the side; (4) another fast-fall, the bell held tight against her chest; (5) another LEDGE HANG, the bell clearly hanging below; (6) another SHIELD broken, the bell dragging on the ground.
+
+STYLE: designed to read at small size in game: bold silhouettes, clearly separated limbs, the held items bright and clearly separated from the bodies. Chunky pixel art with clearly visible square pixels; a standing pose is about 60 art pixels tall.
+
+## Brann Rook, Nox Calder and Father Thorne, weapon patch
+
+Generation `Lc91tvTSL5hI8dx13ql0`. Frames that replaced the atlas's: brann-rook: hurt, ledge_climb <- ledge_climb_b; nox-calder: tumble, airdodge, ledge_climb; father-thorne: fastfall, airdodge, dodge, shield_broken.
+
+Game asset: a pixel-art SPRITE SHEET of replacement animation frames for a 2D side-view platform fighter. The frames will be cut out and used in game mixed with the frames of the reference sheets.
+
+THREE CHARACTERS on this sheet, one per row, each exactly as drawn in their references (match rendering, pixel scale, palette, proportions and outlines exactly, so the new frames cannot be told apart from the old ones):
+- ROW 1 is Brann Rook (references 1 and 2: his approved locomotion and combat sheets): a hulking knight in dark gunmetal riveted plate armour with brass trim, a round domed helmet with a glowing amber grille visor, a small glowing lantern on his back, a tall narrow iron tower shield with a brass rim and boss on his left arm.
+- ROW 2 is Nox Calder (references 3 and 4): a charcoal-black hooded long coat with a ragged hem, the face hidden except for two glowing amber eyes, steel bracers, a black iron lantern with a warm amber flame held by its handle.
+- ROW 3 is Father Thorne (references 5 and 6): a hooded priest in a long moss-green robe overgrown with moss and vines, a brass cross pendant, a tall gnarled wooden staff wound with green vines and topped with a small glowing green bud.
+MOST IMPORTANT: in EVERY frame the character still holds his or her item, clearly visible and drawn in full, never hidden behind the body, never dropped: Brann's tower shield, Nox's lantern, Thorne's vine staff.
+
+LAYOUT: a strict grid of 6 columns by 3 rows of equal cells on a solid, flat, pure magenta background (#FF00FF) that fills the entire image. Exactly one full-body sprite per cell, centred horizontally, feet resting on the same baseline near the bottom of each cell (airborne poses float a little above it). Each sprite stays entirely inside its own cell with clear magenta space between neighbouring sprites. Each character at the SAME scale as in its own reference sheets: a standing pose is about 65% of the cell height. Every sprite faces RIGHT. No text, no labels, no numbers, no grid lines, no borders, no floor, no ledge or wall blocks, no shadows, no motion echoes, no smoke, no sparks, no falling leaves, no magic effects, no particles: only the characters on magenta.
+
+ROW 1 (Brann): (1) idle ready stance, identical to the first frame of his locomotion reference (scale reference); (2) hurt recoil, helmet and torso snapped back, the tower shield still on his arm, swung out to the side; (3) LEDGE CLIMB: pulling himself up, elbows bent, one knee raised to the level of his hands, the tower shield on his back arm (the ledge itself not drawn); (4) another hurt recoil, the shield raised in front of him; (5) another LEDGE CLIMB, the shield hanging from his arm; (6) a third hurt recoil, staggering back behind the shield.
+ROW 2 (Nox): (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) launched tumble, body nearly horizontal, spinning, the lantern still gripped in one outstretched hand; (3) AIR DODGE: midair tucked roll wrapped in the coat, the glowing lantern sticking out clearly from the curled body; (4) LEDGE CLIMB: pulling up, elbows bent, one knee raised to the level of the hands, the lantern hanging from one hand (the ledge itself not drawn); (5) another tumble, the lantern swinging wide; (6) another LEDGE CLIMB, the lantern held up in the climbing hand.
+ROW 3 (Thorne): (1) idle ready stance, identical to the first frame of the locomotion reference (scale reference); (2) fast-fall, compact, knees tucked, plummeting, the vine staff held vertical beside the body; (3) AIR DODGE: midair tucked roll wrapped in the robe, the vine staff held along the body with its glowing bud sticking out clearly; (4) GROUND DODGE: low, fast crouching dash forward, robe streaming, the staff held level along the body; (5) SHIELD broken: dazed and hunched, wobbling, hood lolling, the staff leaning in the limp hand; (6) another fast-fall, the staff held across the body.
+
+STYLE: designed to read at small size in game: bold silhouettes, the held items clearly separated from the bodies. Chunky pixel art with clearly visible square pixels; a standing pose is about 60 art pixels tall.
