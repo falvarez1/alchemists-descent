@@ -315,7 +315,7 @@ their checks green**. Phases 1–5 change no folder layout.
 | Both apps share `localStorage` in dev | App-scoped storage namespace (4.7) in Phase 5, before two entries exist |
 | Bundle layering regresses (world chunk, lazy Builder) | `bundle-layers.test.ts` and `verify:builder-bundle` carried over per app |
 | The repo rename breaks Descent's GitHub Pages links | Last step; `alchemists-descent.pages.dev` stays the main URL; README and links updated in the same change |
-| Untracked local art (`docs/arena/platform-fighter/sprite-library/`, 986 MB) | Not in git, not moved by the script; it moves by hand to `apps/clashforged/docs/` and stays ignored |
+| Untracked local art (the 986 MB sprite library) | Kept outside every worktree at `Y:Projectslchemists-descent-worktreessprite-library` (moved there 2026-10-04), so no worktree removal or file move can touch it |
 
 ## 8. Out of scope
 
