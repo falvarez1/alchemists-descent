@@ -51,7 +51,11 @@ export interface DuelSnapshot {
   seq: number;
   base: number;
   baseline: boolean;
+  /** The host tick this state is the end of. A replica plays snapshots back on this clock, not on arrival times. */
   tick: number;
+  /** The newest guest input sequence the host had applied by this tick (0 before any): the guest measures its whole
+   * input-to-authority round trip from it. */
+  ack: number;
   width: number;
   height: number;
   fighters: [DuelFighterState, DuelFighterState];
@@ -77,6 +81,9 @@ export type DuelMoment =
 export const DUEL_MOMENT_TYPES = ['stockMatchBeat', 'fighterDown', 'stockUltimate', 'stockShieldBreak'] as const;
 /** At most this many moments ride one snapshot (a burst beyond it is dropped, never the frame). */
 export const MAX_DUEL_MOMENTS = 32;
+/** The host publishes at the end of every Nth tick, counted in ticks (a wall-clock cadence beats against the 60 Hz
+ * tick and lands on every second or third). One: the replica sees every tick the host simulates. */
+export const DUEL_SNAPSHOT_TICKS = 1;
 const MAGIC = 0x41444431;
 const encoder = new TextEncoder(),
   decoder = new TextDecoder('utf-8', { fatal: true });
@@ -122,6 +129,7 @@ export function decodeDuelSnapshot(data: Uint8Array): { snapshot: DuelSnapshot; 
       !integer(v.seq, 1) ||
       !integer(v.base) ||
       !integer(v.tick) ||
+      !integer(v.ack) ||
       typeof v.baseline !== 'boolean' ||
       !integer(v.width, 1, 4096) ||
       !integer(v.height, 1, 4096)

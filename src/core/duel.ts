@@ -10,6 +10,8 @@ export interface DuelApi {
   readonly slot: 0 | 1 | null;
   readonly status: string;
   readonly latency: number;
+  /** Guest: milliseconds from sending an input to receiving the snapshot that includes it (0 before any). */
+  readonly inputDelay: number;
   readonly connected: boolean;
   readonly playing: boolean;
   readonly snapshotCount: number;

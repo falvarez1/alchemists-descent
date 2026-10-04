@@ -193,8 +193,13 @@ export class DuelLobby {
     const visible = this.opened && (!duel.connected || !room || room.phase !== 'playing');
     this.root.hidden = !visible;
     this.bar.hidden = !duel.active || !duel.connected || room?.phase !== 'playing';
-    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · ${duel.latency} ms`;
-    this.bar.querySelector('span')!.title = 'Round trip to the LAN server. The host connects locally; the other computer crosses your network.';
+    // The guest's number is the whole input round trip (send, the host's tick, its snapshot back); the host's own input
+    // crosses no network, so it shows its ping to the server.
+    const guest = duel.slot === 1 && duel.inputDelay > 0;
+    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · ${guest ? Math.round(duel.inputDelay) : duel.latency} ms`;
+    this.bar.querySelector('span')!.title = guest
+      ? 'Input round trip: from sending a button to the host’s answer arriving here, including the host’s tick.'
+      : 'Round trip to the LAN server. The host simulates the match on this computer.';
     document.body.classList.toggle('versus-active', duel.active || this.ctx.versus?.active === true);
     this.root.dataset.room = room ? room.phase : 'none';
     this.root.querySelector<HTMLElement>('.duel-connect')!.hidden = duel.active;
