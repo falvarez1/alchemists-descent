@@ -1,7 +1,7 @@
 import { propagateLight } from '@/render/propagateLight';
 import { propagateLightWasm } from '@/render/wasm/lightKernel';
 import { VIEW_H, VIEW_W } from '@/config/constants';
-import { stockLampCells, type StockLampCells } from '@/config/stockStage';
+import { stockLampCells, stockLampLevel, type StockLampCells } from '@/config/stockStage';
 import { DARK_ADAPT, renderAmbient, VIGNETTE_BASE } from '@/render/lightingModel';
 import { Cell, blocksEntity, isGas, isLiquid } from '@/sim/CellType';
 import type { AuthoredLight, Ctx } from '@/core/types';
@@ -264,19 +264,20 @@ export class Lighting implements LightField {
   /**
    * A Duel stage's lanterns (config/stockStage stockLampCells): each glass cell still standing seeds its texel in the
    * glass's own colour while the hull cell its lantern hangs from is still Metal. Seeded per cell, not from the texel's
-   * sampled cell, so a small lantern never blinks out as the camera moves. Weak and steady (a slow breath, no flare):
-   * the stage already sits in a 0.92 ambient, so a lamp only tints what is close to it and never pushes a deck to bloom.
+   * sampled cell, so a small lantern never blinks out as the camera moves. Alive (stockLampLevel: the Foundry pulses,
+   * the Kiln flickers) but local: the stage already sits in a 0.92 ambient, so even at its peak a lamp only tints what
+   * is close to it and never pushes a deck to bloom.
    */
   private seedStockLamps(ctx: Ctx, lamps: StockLampCells, renderCamX: number, renderCamY: number): void {
     const { LW, LH, lightR, lightG, lightB } = this, types = ctx.world.types, width = ctx.world.width, vs = this.viewScale;
-    const phase = ctx.state.frameCount * 0.05;
+    const tick = ctx.state.frameCount;
     for (let k = 0; k < lamps.cells.length; k++) {
       const wi = lamps.cells[k];
       if (types[wi] !== Cell.Glowshroom || types[lamps.anchors[k]] !== Cell.Metal) continue;
       const wx = wi % width, wy = (wi - wx) / width;
       const lx = Math.floor((wx - renderCamX) / vs) >> 1, ly = Math.floor((wy - renderCamY) / vs) >> 1;
       if (lx < 0 || ly < 0 || lx >= LW || ly >= LH) continue;
-      const i = ly * LW + lx, f = STOCK_LAMP_LIGHT * (1 + 0.12 * Math.sin(phase + wx * 0.19 + wy * 0.23));
+      const i = ly * LW + lx, f = STOCK_LAMP_LIGHT * stockLampLevel(lamps, k, tick);
       lightR[i] = Math.max(lightR[i], f * lamps.rgb[k * 3]);
       lightG[i] = Math.max(lightG[i], f * lamps.rgb[k * 3 + 1]);
       lightB[i] = Math.max(lightB[i], f * lamps.rgb[k * 3 + 2]);
@@ -1114,6 +1115,6 @@ export class Lighting implements LightField {
  * match they keep only a faint presence; elsewhere they are unchanged.
  */
 const STOCK_WAND_LIGHT = 0.1;
-/** A Duel lantern's light at its glass (seedStockLamps): a local tint over the stage's 0.92 ambient, never a bloom. */
-const STOCK_LAMP_LIGHT = 0.3;
+/** A Duel lantern's light at its glass at full flame (seedStockLamps): a local tint over the 0.92 ambient, never a bloom. */
+const STOCK_LAMP_LIGHT = 0.36;
 function stockWandLight(ctx: Ctx): number { return ctx.arena?.stockMatch ? STOCK_WAND_LIGHT : 1; }

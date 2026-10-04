@@ -158,19 +158,32 @@ export function slabRow(slab: StockSlab, y: number): { x0: number; x1: number } 
 
 /**
  * Every lamp's glass on a stage, as world cells: where the glass is (real Glowshroom, stamped by world/stockStage), the
- * hull cell it hangs from (the first hull cell straight above it, or the lamp's own metal shell), and the colour of its
- * light (the glass's own, brightest channel 1). A lamp lights only while its glass stands AND its anchor is Metal: knock
- * the hull away and the lantern goes dark with its hangings (render/Lighting).
+ * hull cell it hangs from (the first hull cell straight above it, or the lamp's own metal shell), the colour of its
+ * light (the glass's own, brightest channel 1) and the lantern it belongs to. A lamp lights only while its glass stands
+ * AND its anchor is Metal: knock the hull away and the lantern goes dark with its hangings (render/Lighting).
  */
 export interface StockLampCells {
   readonly cells: Int32Array;
   readonly anchors: Int32Array;
   readonly rgb: Float32Array;
+  /** The lantern each glass cell belongs to (glass within LANTERN_REACH cells): one lantern flickers as one flame. */
+  readonly lamp: Int32Array;
+  /** How each lantern lives (stockLampLevel), by lantern. */
+  readonly life: readonly StockLampLife[];
   /** World index -> slot in `cells`, so the light seeding can tell a lamp's glass from any other Glowshroom. */
   readonly index: ReadonlyMap<number, number>;
 }
 
+/**
+ * A lantern's life (Duel direction: "fast-paced, adrenaline-pumping arcade", the lamps alive): the Foundry's teal glass
+ * PULSES like a charged cell, the Kiln's fire-lamps FLICKER and gutter, the Cistern's lamps SHIMMER as if seen through
+ * water, the Gallery's amber lanterns burn like CANDLES and its violet bell jar BREATHES.
+ */
+export type StockLampLife = 'pulse' | 'flicker' | 'shimmer' | 'candle' | 'breathe';
+
 const TEAL: readonly [number, number, number] = [101, 202, 197];
+/** Panes of one lantern sit at most this many cells apart; two lanterns, scores of cells. */
+const LANTERN_REACH = 4;
 const lampCache = new Map<StockStageId, StockLampCells>();
 
 export function stockLampCells(stage: StockStageDef): StockLampCells {
@@ -198,10 +211,66 @@ export function stockLampCells(stage: StockStageDef): StockLampCells {
     }
   }
   for (const lamp of stage.lamps) for (let y = lamp.y; y <= lamp.y + 3; y++) for (let x = lamp.x - 1; x <= lamp.x + 1; x++) add(x, y, lamp.x, lamp.y - 1, TEAL);
-  const out: StockLampCells = {
-    cells: Int32Array.from(cells), anchors: Int32Array.from(anchors), rgb: Float32Array.from(rgb),
-    index: new Map(cells.map((c, k) => [c, k])),
-  };
+  const index = new Map(cells.map((c, k) => [c, k]));
+  // Lanterns: glass within LANTERN_REACH cells of glass (a lantern's frame bars split its glass into panes).
+  const lamp = new Int32Array(cells.length).fill(-1), life: StockLampLife[] = [];
+  for (let s0 = 0; s0 < cells.length; s0++) {
+    if (lamp[s0] >= 0) continue;
+    const id = life.length, st = [s0]; lamp[s0] = id;
+    while (st.length) {
+      const k = st.pop()!, x = cells[k] % WIDTH, y = (cells[k] - x) / WIDTH;
+      for (let dy = -LANTERN_REACH; dy <= LANTERN_REACH; dy++) for (let dx = -LANTERN_REACH; dx <= LANTERN_REACH; dx++) {
+        const j = index.get(x + dx + (y + dy) * WIDTH);
+        if (j !== undefined && lamp[j] < 0) { lamp[j] = id; st.push(j); }
+      }
+    }
+    const violet = rgb[s0 * 3 + 2] > rgb[s0 * 3 + 1] && rgb[s0 * 3] > rgb[s0 * 3 + 1];
+    life.push(stage.id === 'kiln' ? 'flicker' : stage.id === 'cistern' ? 'shimmer' : stage.id === 'gallery' ? (violet ? 'breathe' : 'candle') : 'pulse');
+  }
+  const out: StockLampCells = { cells: Int32Array.from(cells), anchors: Int32Array.from(anchors), rgb: Float32Array.from(rgb), lamp, life, index };
   lampCache.set(stage.id, out);
   return out;
+}
+
+/** A small deterministic hash in [0, 1): the same tick shows the same flame on every machine. */
+function lampHash(a: number, b: number): number {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+  return (h >>> 0) / 4294967296;
+}
+
+/**
+ * How bright a lantern is at `tick` (60 Hz game ticks), 0.4..1 of its full light: the lamp's light (render/Lighting)
+ * and its glass (render/StockStageArt) both follow it, so the flame you see is the light you get. Never above 1: the
+ * glass is authored under the bloom threshold and stays there.
+ */
+export function stockLampLevel(lamps: StockLampCells, slot: number, tick: number): number {
+  const id = lamps.lamp[slot], t = tick / 60, phase = id * 2.39996;
+  let v: number;
+  switch (lamps.life[id]) {
+    case 'flicker': {
+      // Fire: two quick waves, a fresh jitter every 3 ticks, and now and then a gutter that drops the flame low.
+      const jitter = lampHash(Math.floor(tick / 3), id) - 0.5;
+      const gutter = lampHash(Math.floor(tick / 18), id + 101) < 0.1 ? 0.62 : 1;
+      v = (0.8 + 0.1 * Math.sin(t * 9.7 + phase) + 0.06 * Math.sin(t * 23.3 + phase * 1.7) + 0.18 * jitter) * gutter;
+      break;
+    }
+    case 'pulse': {
+      // A charged cell's beat: a quick swell and a slower fall, about 1.1 per second, each lamp a little behind the last.
+      const c = (t * 1.1 + id * 0.17) % 1;
+      v = 0.5 + 0.5 * (c < 0.25 ? c / 0.25 : Math.pow(1 - (c - 0.25) / 0.75, 1.6));
+      break;
+    }
+    case 'shimmer':
+      v = 0.8 + 0.12 * Math.sin(t * 3.1 + phase) + 0.08 * Math.sin(t * 7.9 + phase * 1.3);
+      break;
+    case 'candle': {
+      const jitter = lampHash(Math.floor(tick / 5), id) - 0.5;
+      v = 0.85 + 0.07 * Math.sin(t * 6.3 + phase) + 0.04 * Math.sin(t * 14.9 + phase * 2) + 0.08 * jitter;
+      break;
+    }
+    default:
+      v = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t * Math.PI * 0.7 + phase));
+  }
+  return Math.max(0.4, Math.min(1, v));
 }

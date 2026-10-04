@@ -82,9 +82,19 @@ first solid cell straight above the glass) and the light's colour (the slab's `g
 and Cistern teal, the Kiln furnace orange, the Gallery's lanterns amber and its bell jar violet. `world/stockStage`
 stamps the glass as Glowshroom in that hue, held to a brightest channel of 70 (Glowshroom is emissive: x1.6 plus a
 self-glow, so it composes at ~2.4x its colour by its own lamp; 70 stays under the bloom threshold). `render/Lighting`
-seeds each standing glass cell at `STOCK_LAMP_LIGHT` (0.3, a slow breath, no flare) in its colour, and only while its
-anchor is still Metal: cut the lantern's hull and it goes dark with its hangings. Over the stage's 0.92 ambient that is a
-local tint (about 0.2 six cells out, measured), never a bloom.
+seeds each standing glass cell in its colour, and only while its anchor is still Metal: cut the lantern's hull and it
+goes dark with its hangings. Over the stage's 0.92 ambient that is a local tint (about 0.2 six cells out at full flame,
+measured), never a bloom.
+
+The lamps are alive (the Duel's direction: fast, arcade): the glass of one lantern (panes within 4 cells) burns as one
+flame, and `stockLampLevel` (0.4..1, deterministic per tick) sets it: the Foundry's teal glass PULSES (a quick swell and a
+slower fall, ~1.1 per second, each lamp a beat behind the last), the Kiln's fire-lamps FLICKER (fast waves, a fresh
+jitter every 3 ticks, an occasional gutter), the Cistern's SHIMMER, the Gallery's amber lanterns burn like CANDLES and
+its bell jar BREATHES. The light (`STOCK_LAMP_LIGHT` 0.36 at full flame) and the glass pixels of the lantern art
+(render/StockStageArt) both follow the same level, so the flame you see is the light you get; glass whose Glowshroom is
+gone draws dark (0.3). The level never exceeds 1, so the glass stays under the bloom threshold it was baked to. The
+light does not reach the backdrop plate (the stock backdrop takes no real light, `DepthScene` lit 0), so a lamp's glow
+shows on the hull and on fighters near it, not on the far wall.
 
 ## Geometry rules
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WIDTH } from '@/config/constants';
-import { STOCK_STAGES, STOCK_STAGE_ORDER, slabRuns, stockLampCells, type StockSlab } from '@/config/stockStage';
+import { STOCK_STAGES, STOCK_STAGE_ORDER, slabRuns, stockLampCells, stockLampLevel, type StockSlab } from '@/config/stockStage';
 
 const inRuns = (slab: StockSlab, x: number, y: number): boolean => {
   const runs = slabRuns(slab, y);
@@ -59,5 +59,32 @@ describe('stock stage proportions (docs/arena/platform-fighter/STAGES.md)', () =
     const gallery = hues('gallery');
     expect(gallery.some(([r, g, b]) => r > g && g > b)).toBe(true);
     expect(gallery.some(([r, g, b]) => b > g && r > g)).toBe(true);
+  });
+
+  it('makes every lantern one living flame: the Foundry pulses, the Kiln flickers, never past full light', () => {
+    for (const id of STOCK_STAGE_ORDER) {
+      const lamps = stockLampCells(STOCK_STAGES[id]), lanterns = new Set(lamps.lamp);
+      // Two lanterns under the main, one under each raised platform (the Gallery's perch carries its bell jar).
+      expect(lanterns.size, id).toBe(2 + STOCK_STAGES[id].platforms.length);
+      for (let k = 0; k < lamps.cells.length; k++) for (let tick = 0; tick < 600; tick += 7) {
+        const v = stockLampLevel(lamps, k, tick);
+        expect(v).toBeGreaterThanOrEqual(0.4);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+      // Every cell of one lantern burns at the same level at the same tick.
+      for (let k = 1; k < lamps.cells.length; k++) if (lamps.lamp[k] === lamps.lamp[k - 1]) {
+        expect(stockLampLevel(lamps, k, 123)).toBe(stockLampLevel(lamps, k - 1, 123));
+      }
+    }
+    const kiln = stockLampCells(STOCK_STAGES.kiln), foundry = stockLampCells(STOCK_STAGES.foundry);
+    expect(new Set(kiln.life)).toEqual(new Set(['flicker']));
+    expect(new Set(foundry.life)).toEqual(new Set(['pulse']));
+    expect(new Set(stockLampCells(STOCK_STAGES.gallery).life)).toEqual(new Set(['candle', 'breathe']));
+    // A flicker changes within a few ticks; a pulse sweeps most of its range within a second.
+    const series = (lamps: typeof kiln, from: number, n: number) => Array.from({ length: n }, (_, i) => stockLampLevel(lamps, 0, from + i));
+    const flick = series(kiln, 0, 12);
+    expect(Math.max(...flick) - Math.min(...flick)).toBeGreaterThan(0.08);
+    const beat = series(foundry, 0, 60);
+    expect(Math.max(...beat) - Math.min(...beat)).toBeGreaterThan(0.4);
   });
 });

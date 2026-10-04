@@ -1,4 +1,4 @@
-import { STOCK_STAGE, slabArt, slabRow, type StockSlab, type StockStageDef } from '@/config/stockStage';
+import { STOCK_STAGE, slabArt, slabRow, stockLampCells, stockLampLevel, type StockSlab, type StockStageDef } from '@/config/stockStage';
 import { stageArtImage, type StageArtImage } from '@/content/arena/stageArtImages';
 import type { Ctx } from '@/core/types';
 import type { LightField, PixelSurface } from '@/render/pixels';
@@ -21,7 +21,7 @@ export function drawStockStageArt(out: PixelSurface, ctx: Ctx, light?: LightFiel
   for (const p of artwork) {
     if (ctx.world.type(p.x, p.y) === p.type) out.setPx(p.x, p.y, p.r, p.g, p.b);
   }
-  for (const slab of [stage.main, ...stage.platforms]) if (slab.art) { drawFace(out, ctx, slab, light); drawHangings(out, ctx, slab); }
+  for (const slab of [stage.main, ...stage.platforms]) if (slab.art) { drawFace(out, ctx, slab, light); drawHangings(out, ctx, stage, slab); }
 }
 
 /** A baked hull face at presentation resolution (and its mirror), alpha 0/1. */
@@ -89,8 +89,8 @@ function drawFace(out: PixelSurface, ctx: Ctx, slab: StockSlab, light?: LightFie
   }
 }
 
-/** One hanging: its pixels (fine, slab-relative, unmirrored) and the hull cell it hangs from. */
-interface Hanging { fx: number[]; fy: number[]; rgb: number[]; anchorX: number; anchorY: number }
+/** One hanging: its pixels (fine, slab-relative, unmirrored), which of them are lantern glass, and the hull cell it hangs from. */
+interface Hanging { fx: number[]; fy: number[]; rgb: number[]; glass: boolean[]; anchorX: number; anchorY: number }
 const hangings = new Map<string, Hanging[] | null>();
 
 function hangingsFor(slab: StockSlab): Hanging[] | null {
@@ -100,22 +100,23 @@ function hangingsFor(slab: StockSlab): Hanging[] | null {
   if (cached !== undefined) return cached;
   const img = stageArtImage(`${key.split('/')[0]}/${art.decor.file}`);
   if (!img) return null;
-  const list = splitHangings(img, art.decor.x, art.decor.y, art.runs);
+  const list = splitHangings(img, art.decor.x, art.decor.y, art.runs, new Set(art.glass.map(([x, y]) => x + y * art.width)), art.width);
   hangings.set(key, list);
   return list;
 }
 
 /** Group the decor into connected hangings (8-connected), each anchored to the nearest hull cell above its top. */
-function splitHangings(img: StageArtImage, ox: number, oy: number, runs: readonly (readonly number[])[]): Hanging[] {
+function splitHangings(img: StageArtImage, ox: number, oy: number, runs: readonly (readonly number[])[], glassCells: ReadonlySet<number>, cellsWide: number): Hanging[] {
   const { width: w, height: h, pixels } = img, seen = new Uint8Array(w * h), out: Hanging[] = [];
   const solid = (cx: number, cy: number): boolean => { const row = runs[cy]; if (!row) return false; for (let k = 0; k < row.length; k += 2) if (cx >= row[k] && cx <= row[k + 1]) return true; return false; };
   for (let s = 0; s < w * h; s++) {
     if (seen[s] || pixels[s * 4 + 3] < 128) continue;
-    const g: Hanging = { fx: [], fy: [], rgb: [], anchorX: 0, anchorY: 0 };
+    const g: Hanging = { fx: [], fy: [], rgb: [], glass: [], anchorX: 0, anchorY: 0 };
     const st = [s]; seen[s] = 1; let top = h, topX = 0;
     while (st.length) {
       const i = st.pop()!, x = i % w, y = (i / w) | 0;
       g.fx.push(ox + x); g.fy.push(oy + y); g.rgb.push(pixels[i * 4] / 255, pixels[i * 4 + 1] / 255, pixels[i * 4 + 2] / 255);
+      g.glass.push(glassCells.has(((ox + x) >> 1) + ((oy + y) >> 1) * cellsWide));
       if (y < top) { top = y; topX = x; }
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const X = x + dx, Y = y + dy, j = X + Y * w;
@@ -132,17 +133,26 @@ function splitHangings(img: StageArtImage, ox: number, oy: number, runs: readonl
   return out;
 }
 
-function drawHangings(out: PixelSurface, ctx: Ctx, slab: StockSlab): void {
+/** A lantern's glass whose Glowshroom is gone (burnt, blasted): the housing still hangs, the flame is out. */
+const DEAD_GLASS = 0.3;
+
+function drawHangings(out: PixelSurface, ctx: Ctx, stage: StockStageDef, slab: StockSlab): void {
   const list = hangingsFor(slab), art = slabArt(slab);
   if (!list || !art) return;
   const fine = out.setFinePx !== undefined && (out.pixelStep ?? 1) < 1;
-  const wf = art.width * 2;
+  const wf = art.width * 2, w = ctx.world, lamps = stockLampCells(stage), tick = ctx.state.frameCount;
   for (const g of list) {
     const ax = slab.mirror ? slab.x0 + art.width - 1 - g.anchorX : slab.x0 + g.anchorX;
-    if (ctx.world.type(ax, slab.y + g.anchorY) !== Cell.Metal) continue; // its hull is gone: so is the hanging
+    if (w.type(ax, slab.y + g.anchorY) !== Cell.Metal) continue; // its hull is gone: so is the hanging
     for (let k = 0; k < g.fx.length; k++) {
       const fx = slab.mirror ? wf - 1 - g.fx[k] : g.fx[k];
-      const r = g.rgb[k * 3], gg = g.rgb[k * 3 + 1], b = g.rgb[k * 3 + 2];
+      let r = g.rgb[k * 3], gg = g.rgb[k * 3 + 1], b = g.rgb[k * 3 + 2];
+      if (g.glass[k]) {
+        // The glass burns with its lamp (the same level its light is seeded at); out once its Glowshroom is gone.
+        const i = w.idx(slab.x0 + (fx >> 1), slab.y + (g.fy[k] >> 1)), slot = lamps.index.get(i);
+        const level = slot === undefined || w.types[i] !== Cell.Glowshroom ? DEAD_GLASS : stockLampLevel(lamps, slot, tick);
+        r *= level; gg *= level; b *= level;
+      }
       if (fine) out.setFinePx!(slab.x0 + fx * 0.5, slab.y + g.fy[k] * 0.5, r, gg, b);
       else if ((fx & 1) === 0 && (g.fy[k] & 1) === 0) out.setPx(slab.x0 + (fx >> 1), slab.y + (g.fy[k] >> 1), r, gg, b);
     }
