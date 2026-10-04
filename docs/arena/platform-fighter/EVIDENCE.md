@@ -18,6 +18,9 @@ Branch feature/arena-duel-visuals (main 76638da merged in). Local server 127.0.0
 - Whole suite: 3,290 tests in 269 files; typecheck; lint (src, tests, scripts); production build.
 - Remaining: single-frame poses; kit abilities use the cast pose; facial detail at 38 px; washed-out WebGPU presentation of expanded wide shots (pre-existing, WebGL2 is the default); stage hazards are art, not cells, in the competitive variants.
 - Side-by-side sheets: evidence/fidelity/compare-*.png (scripts/compare-duel-concepts.mjs).
+- verify-stock-stationary first failed one of 18 cases: a level-3 CPU's projectile launched the idle target off the new outer ledge, and the long fall outlasted the 90-tick credit window, so the ring-out read as self-inflicted. The new landing-aware credit (regression test in arena-slots.test.ts) makes all 18 pass; the two knockouts are credited to the CPU.
+- Generation spend for the pass: about $16.7 for 36 fighter sheet images and about $5 for the three later stages, plus the Ilyra and Foundry sheets made first (gpt-image-2, ElevenLabs).
+- Environment note: removing the temporary arena-duel-ui worktree on Windows also deleted entries from the main checkout's shared node_modules through its junction (scoped packages, .bin). It was restored from the lockfile (package files unchanged); this worktree now keeps its own node_modules.
 
 ## Special-charge checkpoint
 

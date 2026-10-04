@@ -52,13 +52,25 @@ async function pair(file, left, right, leftLabel, rightLabel, height = 540) {
   ]).png().toFile(`${out}/${file}`);
 }
 
+
+/** A panoramic concept panel above the 16:9 capture, both at full width (side by side would shrink the capture). */
+async function stack(file, top, bottom, topLabel, bottomLabel, width = 1280) {
+  const fit = async (src, extract) => { let img = sharp(src); if (extract) img = img.extract(extract); return img.resize({ width }).png().toBuffer({ resolveWithObject: true }); };
+  const a = await fit(top.src, top.extract), b = await fit(bottom.src, bottom.extract), band = 34;
+  const label = (text) => Buffer.from(`<svg width="${width}" height="${band}"><rect width="100%" height="100%" fill="#0c141d"/><text x="14" y="23" font-family="Georgia, serif" font-size="17" fill="#e8dcc0">${text}</text></svg>`);
+  await sharp({ create: { width, height: a.info.height + b.info.height + band * 2 + 12, channels: 3, background: '#0c141d' } }).composite([
+    { input: label(topLabel), left: 0, top: 0 }, { input: a.data, left: 0, top: band },
+    { input: label(bottomLabel), left: 0, top: band + a.info.height + 12 }, { input: b.data, left: 0, top: band * 2 + a.info.height + 12 },
+  ]).png().toFile(`${out}/${file}`);
+}
+
 const game = (name) => `${out}/${name}.png`;
 await pair('compare-foundry.png', { src: `${concepts}/foundry-match.png` }, { src: game('foundry-mid') }, 'Concept · foundry-match.png', 'Game · the Foundry, mid framing');
 // camera-direction.png panels: close (top), spread out (middle).
-await pair('compare-close.png', { src: `${concepts}/camera-direction.png`, extract: { left: 0, top: 0, width: 1672, height: 280 } }, { src: game('foundry-close') },
-  'Concept · close combat', 'Game · close framing', 300);
-await pair('compare-wide.png', { src: `${concepts}/camera-direction.png`, extract: { left: 0, top: 310, width: 1672, height: 270 } }, { src: game('foundry-wide') },
-  'Concept · spread out', 'Game · wide framing', 300);
+await stack('compare-close.png', { src: `${concepts}/camera-direction.png`, extract: { left: 0, top: 0, width: 1672, height: 280 } }, { src: game('foundry-close') },
+  'Concept · close combat (camera-direction.png)', 'Game · close framing, chosen by the camera rig');
+await stack('compare-wide.png', { src: `${concepts}/camera-direction.png`, extract: { left: 0, top: 310, width: 1672, height: 270 } }, { src: game('foundry-wide') },
+  'Concept · spread out (camera-direction.png)', 'Game · wide framing, chosen by the camera rig');
 const quad = { foundry: [0, 0], kiln: [838, 0], cistern: [0, 474], gallery: [838, 474] };
 for (const stage of ['kiln', 'cistern', 'gallery']) {
   const [x, y] = quad[stage];

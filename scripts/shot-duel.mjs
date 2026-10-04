@@ -40,27 +40,25 @@ try {
     const c = window.__game.ctx; await c.console.exec('arena bot 0 off'); await c.console.exec('arena bot 1 off');
     c.projectiles.length = 0;
   });
-  const stageShot = async (name, zoom, spread, air = 0) => {
-    await page.evaluate(({ zoom, spread, air }) => {
+  // The camera is the game's own: the rig settles on the placed fighters exactly as it would in play (no forced zoom).
+  const stageShot = async (name, spread, air = 0) => {
+    await page.evaluate(({ spread, air }) => {
       const g = window.__game, c = g.ctx, a = c.arena, st = a.stockStage;
       const y = st.main.y - 1, cx = st.center.x;
-      const place = () => [{ x: cx - spread, y, facing: 1 }, { x: cx + spread, y: y - air, facing: -1 }]
-        .forEach((b, slot) => Object.assign(a.bundle(slot).player, b, { vx: 0, vy: 0, fx: 0, fy: 0, invuln: 0, dead: false, staggerT: 0, firing: false }));
+      const bodies = [{ x: Math.round(cx - spread), y, facing: 1 }, { x: Math.round(cx + spread), y: y - air, facing: -1 }];
+      const place = () => bodies.forEach((b, slot) => Object.assign(a.bundle(slot).player, b, { vx: 0, vy: 0, fx: 0, fy: 0, invuln: 0, dead: false, staggerT: 0, firing: false }));
       place();
       for (let i = 0; i < 90; i++) { g.tick(true, { forcePaused: true }); if (i % 10 === 0) place(); }
       place();
       c.state.paused = true; c.projectiles.length = 0;
-      const rig = c.camera.stockRig;
-      rig.step = () => {};
-      rig.x = cx; rig.y = y - 10 - 50 / zoom; rig.zoom = zoom;
-      for (let i = 0; i < 3; i++) c.camera.update(c);
+      for (let i = 0; i < 600; i++) c.camera.update(c);
       g.composer.capturePoses(c); g.composeDirty = true;
-    }, { zoom, spread, air });
+    }, { spread, air });
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     await page.screenshot({ path: `${out}/${tag}-${name}.png` });
   };
-  if (shots.includes('close')) await stageShot('close', 2.4, 16);
-  if (shots.includes('mid')) await stageShot('mid', 1.35, 60);
-  if (shots.includes('wide')) await stageShot('wide', 0.78, 120);
+  if (shots.includes('close')) await stageShot('close', 16);
+  if (shots.includes('mid')) await stageShot('mid', 70);
+  if (shots.includes('wide')) await stageShot('wide', 235);
   console.log(JSON.stringify({ tag, errors }));
 } finally { await browser.close(); }
