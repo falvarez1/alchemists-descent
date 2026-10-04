@@ -1,0 +1,77 @@
+[
+  {
+    "id": "ilyra-voss/armed/run",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-ee5e4e23-7d43-42ec-8ebd-9991b6c64b22.png",
+    "source": "sources/ilyra-voss/armed/run-complete.png"
+  },
+  {
+    "id": "ilyra-voss/armed/walk",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-bfbe6679-2624-43a9-a6a2-b77292e90924.png",
+    "source": "sources/ilyra-voss/armed/walk-complete.png"
+  },
+  {
+    "id": "ilyra-voss/armed/ultimate",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-2b75bfbc-29bb-445e-91f0-8198804f588b.png",
+    "source": "sources/ilyra-voss/armed/ultimate-complete.png"
+  },
+  {
+    "id": "ilyra-voss/armed/up_smash",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-f46a9a79-2b7f-4e52-856c-70d7a9d9edf2.png",
+    "source": "sources/ilyra-voss/armed/up_smash-complete.png"
+  },
+  {
+    "id": "ilyra-voss/armed/tumble",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-b74e31d8-39eb-4c2f-ad9f-b4f8eabad5c4.png",
+    "source": "sources/ilyra-voss/armed/tumble-complete.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/run",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-b74dd808-a1d3-42cb-b762-4b9f106cdab6.png",
+    "source": "sources/ilyra-voss/unarmed/run-complete.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/walk",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-69c4f3ee-8282-4e68-85f3-b9dac8b63a99.png",
+    "source": "sources/ilyra-voss/unarmed/walk-complete.png"
+  },
+  {
+    "id": "brann-rook/armed/tumble",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-e4d3eddb-4ab4-472b-b31b-00e18360c2f0.png",
+    "source": "sources/brann-rook/armed/tumble-complete.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/tumble",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-faca5c44-a49e-4c5b-9d4f-c2006e2b92b7.png",
+    "source": "sources/ilyra-voss/unarmed/tumble-complete.png"
+  },
+  {
+    "id": "brann-rook/unarmed/tumble",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-209ed7e8-ba4b-4a85-ad64-37c5853bcd37.png",
+    "source": "sources/brann-rook/unarmed/tumble-complete.png"
+  },
+  {
+    "id": "effects/ilyra-voss/crucible_spin",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-7594ae6d-afff-4e54-aedc-8e382d89c6cb.png",
+    "source": "sources/effects/ilyra-voss/crucible_spin-complete.png"
+  },
+  {
+    "id": "effects/ilyra-voss/scorch",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-08ac8058-7715-4dfa-bc8f-17aa70c4059d.png",
+    "source": "sources/effects/ilyra-voss/scorch-complete.png"
+  },
+  {
+    "id": "effects/ilyra-voss/phoenix_charge",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-85b42e64-393a-45c0-af96-07402455a92d.png",
+    "source": "sources/effects/ilyra-voss/phoenix_charge-complete.png"
+  },
+  {
+    "id": "effects/ilyra-voss/volatile_spark",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-3ab33d62-b07a-4bb4-a42d-d8ff6db1dfe7.png",
+    "source": "sources/effects/ilyra-voss/volatile_spark-complete.png"
+  },
+  {
+    "id": "effects/ilyra-voss/crucible_fragments",
+    "generatedPath": "C:\\Users\\Frank\\.codex\\generated_images\\01a10877-5490-7b80-b551-df7783393d12\\exec-1df1bb7e-6556-4350-bd4e-d431071c9345.png",
+    "source": "sources/effects/ilyra-voss/crucible_fragments-complete.png"
+  }
+]

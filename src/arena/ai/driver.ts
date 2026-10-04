@@ -38,6 +38,7 @@ export function playerHands(ctx: Ctx): Hands {
   return {
     press: (slot) => ctx.fighters?.press(slot),
     kick: () => { if (!ctx.player.dead) ctx.playerCtl.kick(ctx); },
+    attack: (kind, facing) => { if (!ctx.player.dead) ctx.arena?.requestStockAttack(kind, facing); },
     flask: () => { if (!ctx.player.dead) ctx.flask.throwFlask(ctx); },
     wand: (index) => { ctx.wands.active = index; ctx.events.emit('wandChanged'); },
     respawn: () => { if (ctx.player.dead) ctx.playerCtl.respawn(); },
@@ -61,6 +62,7 @@ export function slotSelf(ctx: Ctx, slot: number): BrainSelf | null {
     hands: {
       press: (s) => b.fighters.press(s),
       kick: () => { if (!b.player.dead) b.playerCtl.kick(ctx); },
+      attack: (kind, facing) => { if (!b.player.dead) ctx.arena?.requestStockAttack(kind, facing); },
       flask: () => { if (!b.player.dead) b.flask.throwFlask(ctx); },
       wand: (index) => { b.wands.active = index; ctx.events.emit('wandChanged'); },
       respawn: () => undefined,

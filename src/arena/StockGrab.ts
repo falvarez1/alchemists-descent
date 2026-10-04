@@ -29,7 +29,6 @@ export class StockGrab implements StockGrabView {
   }
   release(x = 0, y = 0): void {
     this.victim = null; this.phase = 'recovery'; this.age = 0; this.throwX = x; this.throwY = y;
-    if (x) this.facing = Math.sign(x);
   }
   reset(): void { this.victim = null; this.phase = 'idle'; this.age = 0; this.throwX = this.throwY = 0; }
 }

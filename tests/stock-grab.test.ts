@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { StockGrab } from '@/arena/StockGrab';
 
 describe('committed grabs', () => {
+  it('keeps the original facing so backward and downward throws remain distinguishable', () => {
+    const g = new StockGrab(); g.start(1); g.release(-1, 0);
+    expect(g.facing).toBe(1); expect(g.throwX).toBe(-1);
+    g.reset(); g.start(1); g.release(1, 1);
+    expect(g.throwY).toBe(1);
+  });
   it('has startup, a short contact window, and punishable whiff recovery', () => {
     const g = new StockGrab(); expect(g.start(-1)).toBe(true);
     expect(g.phase).toBe('startup'); expect(g.facing).toBe(-1);

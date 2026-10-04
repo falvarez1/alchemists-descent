@@ -4,7 +4,7 @@ import { isFighterId } from '../../content/fighters.ts';
 import type { DuelInput } from './input.ts';
 
 /** Bump for incompatible wire or simulation presentation changes. */
-export const DUEL_PROTOCOL = 1;
+export const DUEL_PROTOCOL = 2;
 export const DUEL_PATH = '/__duel';
 export const MAX_CONTROL_BYTES = 4096;
 export const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;

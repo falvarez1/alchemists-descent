@@ -1,0 +1,271 @@
+{
+  "ilyra-voss/unarmed/crouch_idle": {
+    "status": "corrected-from-duck-end-pose",
+    "override": {
+      "source": "sources/ilyra-voss/unarmed/crouch_idle-v2.png"
+    },
+    "reason": "Original kneeling stance replaced with a squat matching the accepted duck end pose."
+  },
+  "ilyra-voss/unarmed/tactical": {
+    "status": "corrected-release-continuity-review-pending",
+    "override": {
+      "source": "sources/ilyra-voss/unarmed/tactical-v2.png"
+    },
+    "reason": "Vial remains visible until the release. Cross-state and socket review remain."
+  },
+  "ilyra-voss/unarmed/tumble": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/unarmed/tumble-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/tumble": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/tumble-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/unarmed/walk": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/unarmed/walk-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/walk": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/walk-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/run": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/run-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/ultimate": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/ultimate-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "effects/ilyra-voss/crucible_spin": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/effects/ilyra-voss/crucible_spin-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/unarmed/ledge_hang": {
+    "status": "grip-registered-motion-review-pending",
+    "reason": "Grip contact is tracked in every source frame and packed at the same pivot. Body and feet remain free to swing.",
+    "override": {
+      "scale": 0.44591,
+      "pivot": {
+        "x": 192,
+        "y": 64
+      },
+      "roots": [
+        {
+          "x": 233.82848556883675,
+          "y": 58.45563005987756
+        },
+        {
+          "x": 535.9527707384898,
+          "y": 57.45563005987756
+        },
+        {
+          "x": 828.437980758449,
+          "y": 58.45563005987756
+        },
+        {
+          "x": 1124.8284855688369,
+          "y": 56.213025049897965
+        },
+        {
+          "x": 232.52672063869392,
+          "y": 466.45563005987754
+        },
+        {
+          "x": 539.2545356686327,
+          "y": 466.45563005987754
+        },
+        {
+          "x": 829.2545356686327,
+          "y": 466.45563005987754
+        },
+        {
+          "x": 1123.3728555089592,
+          "y": 464.45563005987754
+        },
+        {
+          "x": 233.04151061873472,
+          "y": 860.213025049898
+        },
+        {
+          "x": 539.0119306586531,
+          "y": 862.4556300598775
+        },
+        {
+          "x": 831.0710905788163,
+          "y": 860.213025049898
+        },
+        {
+          "x": 1132.8580655289184,
+          "y": 862.4556300598775
+        }
+      ],
+      "anchorType": "grip",
+      "registration": "gripping-hand"
+    }
+  },
+  "ilyra-voss/armed/ledge_hang": {
+    "status": "grip-registered-motion-review-pending",
+    "reason": "Grip contact is tracked in every source frame and packed at the same pivot. Body and feet remain free to swing.",
+    "override": {
+      "scale": 0.464286,
+      "pivot": {
+        "x": 192,
+        "y": 64
+      },
+      "roots": [
+        {
+          "x": 216.30760350301324,
+          "y": 70.9230689704191
+        },
+        {
+          "x": 515.1537586746101,
+          "y": 70.9230689704191
+        },
+        {
+          "x": 809.1537586746101,
+          "y": 70.9230689704191
+        },
+        {
+          "x": 1103.9230000473847,
+          "y": 70.9230689704191
+        },
+        {
+          "x": 219.15375867461006,
+          "y": 481.7692241420159
+        },
+        {
+          "x": 510.8460690178037,
+          "y": 484.07691379882226
+        },
+        {
+          "x": 809.8460690178038,
+          "y": 483.9230689704191
+        },
+        {
+          "x": 1111.999913846207,
+          "y": 483.9230689704191
+        },
+        {
+          "x": 214.8460690178037,
+          "y": 883.9230689704191
+        },
+        {
+          "x": 514.8460690178038,
+          "y": 883.9230689704191
+        },
+        {
+          "x": 815.3076035030133,
+          "y": 884.9230689704191
+        },
+        {
+          "x": 1112.8460690178038,
+          "y": 883.9230689704191
+        }
+      ],
+      "anchorType": "grip",
+      "registration": "gripping-hand"
+    }
+  },
+  "brann-rook/armed/aerial": {
+    "status": "generated-motion-review-required",
+    "reason": "Asymmetric cell padding preserves the complete rod extension at the original clip-wide scale.",
+    "override": {
+      "pivot": {
+        "x": 160,
+        "y": 320
+      }
+    }
+  },
+  "ilyra-voss/armed/up_smash": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/up_smash-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/unarmed/run": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/unarmed/run-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "brann-rook/armed/tumble": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/brann-rook/armed/tumble-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "brann-rook/unarmed/tumble": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/brann-rook/unarmed/tumble-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "effects/ilyra-voss/scorch": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/effects/ilyra-voss/scorch-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "effects/ilyra-voss/volatile_spark": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/effects/ilyra-voss/volatile_spark-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "effects/ilyra-voss/phoenix_charge": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/effects/ilyra-voss/phoenix_charge-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "effects/ilyra-voss/crucible_fragments": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/effects/ilyra-voss/crucible_fragments-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/throw_forward": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/throw_forward-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  },
+  "ilyra-voss/armed/tactical": {
+    "status": "replacement-reviewed",
+    "override": {
+      "source": "sources/ilyra-voss/armed/tactical-complete.png"
+    },
+    "reason": "Selected completion repair; prompt, source hash and registration are recorded. Supersedes the earlier motion/equipment issue."
+  }
+}

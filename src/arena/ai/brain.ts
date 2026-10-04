@@ -4,6 +4,7 @@ import type { Ctx, InputState, PlayerState } from '@/core/types';
 import type { PersonalityId } from '@/config/aiPersonalities';
 import type { ObservedHit } from '@/arena/ai/memory';
 import type { UtilityScore } from '@/arena/ai/utility';
+import type { StockAttackKind } from '@/core/stockAttacks';
 
 /**
  * THE BRAIN CONTRACT (docs/arena/AI-FIGHTERS.md 2-3). A brain is a computer fighter's mind: every fixed tick it is
@@ -29,6 +30,7 @@ export interface Hands {
   press(slot: AbilitySlot): void;
   /** F: the kick (`PlayerControl.kick`). The engine enforces its own cooldown. */
   kick(): void;
+  attack?(kind: StockAttackKind, facing: number): void;
   /** The right mouse button: throw the flask. */
   flask(): void;
   /** Number keys / wheel: change to an equipped wand through the normal selection path. */

@@ -32,7 +32,7 @@ describe('per-fighter stock movesets', () => {
     for (const id of FIGHTER_ORDER) {
       expect(STOCK_ATTACKS[id]).toBeDefined();
       if (id !== 'ilyra-voss') expect(STOCK_ATTACKS[id]).not.toBe(proto);
-      if (!hasAuthoredMoveset(id)) expect(STOCK_ATTACKS[id]).toEqual(proto);
+      if (!hasAuthoredMoveset(id)) for (const kind of ['opener','launcher','aerial','finisher'] as const) expect(STOCK_ATTACKS[id][kind]).toEqual(proto[kind]);
     }
     const kest = STOCK_ATTACKS['kest-rel'].opener as { damage: number };
     const was = kest.damage;

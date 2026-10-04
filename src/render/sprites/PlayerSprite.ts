@@ -57,7 +57,11 @@ const STAIN_R = 0.5, STAIN_G = 0.06, STAIN_B = 0.09; // soaked-cloth blood (dark
 export function drawPlayerSprite(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const player = ctx.player;
   const frameCount = ctx.state.frameCount;
-  if (ctx.state.mode !== 'play' || player.dead) return;
+  if (ctx.state.mode !== 'play') return;
+  if (player.dead) {
+    if (ctx.arena?.stockMatch) drawDuelFighter(out, light, ctx);
+    return;
+  }
   // A launched stock fighter must stay trackable throughout its recovery.
   if (!ctx.arena?.stockMatch && !ctx.state.reduceFlashes && player.invuln > 0 && frameCount % 6 < 3) return;
   // The game surface has half-cell pixels and uses the joint-driven art pass.

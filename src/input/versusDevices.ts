@@ -47,7 +47,7 @@ export function readVersusPad(pad: Gamepad, previous: Uint8Array, deadzone: numb
     left: x < -th.move || held(14), right: x > th.move || held(15), up: y < -th.up || held(12), down: y > th.down || held(13),
     jump: held(2) || held(3), jumpPressed: pressed(2) || pressed(3),
     defense, defensePressed: pressed(6) || pressed(7), dodgeDirection: defense && direction !== 0 && previous[19] !== direction,
-    grab: pressed(4) || pressed(5), attack: pressed(0), special: held(1), specialPressed: pressed(1), smash,
+    grab: pressed(4) || pressed(5), climbHeld: held(4) || held(5), attack: pressed(0), special: held(1), specialPressed: pressed(1), smash,
     confirm: pressed(0), back: pressed(1), previous: pressed(14), next: pressed(15), pause: pressed(9),
     // The lobby's stage picker (in a match LB/RB are grab).
     stagePrevious: pressed(4), stageNext: pressed(5),

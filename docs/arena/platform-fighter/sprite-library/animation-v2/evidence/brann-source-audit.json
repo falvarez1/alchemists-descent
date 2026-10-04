@@ -1,0 +1,437 @@
+[
+  {
+    "id": "brann-rook/unarmed/run",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/dodge",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/tactical",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/ultimate",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/walk",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/dash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/brake",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/double_jump",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/fast_fall",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/air_dodge",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/recovery",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/wall_cling",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/ledge_hang",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/ledge_climb",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/tumble",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/get_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/ko",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/respawn",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/victory",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/neutral_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/back_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/up_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/down_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/up_smash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/down_smash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/throw_back",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/throw_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/throw_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/cast_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/cast_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/cast_diagonal_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/cast_diagonal_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/taunt",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/crouch_walk",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/shield_break",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/frozen",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/burning",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/grabbed",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/ledge_release",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/run",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/dodge",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/tactical",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/ultimate",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/walk",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/dash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/brake",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/double_jump",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/fast_fall",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/air_dodge",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/recovery",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/wall_cling",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/ledge_hang",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/ledge_climb",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/tumble",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/get_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/ko",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/respawn",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/victory",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/neutral_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/back_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/up_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/down_air",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/up_smash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/down_smash",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/throw_back",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/throw_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/throw_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/cast_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/cast_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/cast_diagonal_up",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/cast_diagonal_down",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/taunt",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/crouch_walk",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/shield_break",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/frozen",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/burning",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/grabbed",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/armed/ledge_release",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "brann-rook/unarmed/finisher",
+    "figures": 12,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/guard_plate",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/guard_impact",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/pressure",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/redline_aura",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/steam_jet",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/vent_cloud",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/armor_scraps",
+    "figures": null,
+    "error": null
+  },
+  {
+    "id": "effects/brann-rook/boiler_flare",
+    "figures": null,
+    "error": null
+  }
+]

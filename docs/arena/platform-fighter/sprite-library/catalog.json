@@ -1,0 +1,416 @@
+{
+  "version": 1,
+  "style": "detailed pixel art",
+  "fighters": [
+    {
+      "id": "ilyra-voss",
+      "name": "Ilyra Voss",
+      "identity": "cream broad-brim witch hat with dark band, long pale braid, teal split-tail alchemist coat with gold edging, leather belts, dark trousers, tall brown boots",
+      "weapon": "brass pistol-wand",
+      "tactical": "throwing an orange crucible vial",
+      "ultimate": "channeling Phoenix Draft with amber-lit eyes and coat edges"
+    },
+    {
+      "id": "brann-rook",
+      "name": "Brann Rook",
+      "identity": "very bulky completely enclosed black iron diving-style helm with amber slit grille, massive mining plate armor, brass rivets and gauge, heavy greaves, back-mounted boiler",
+      "weapon": "tower shield and short brass pressure rod",
+      "tactical": "raising Boiler Guard tower shield",
+      "ultimate": "venting Redline boiler steam with glowing amber visor"
+    },
+    {
+      "id": "sable-fen",
+      "name": "Sable Fen",
+      "identity": "slim moss-green pointed hood with shadowed face and green eyes, torn moss cape, swamp leathers, bandaged forearms and boots",
+      "weapon": "long hooked sickle staff with steel crescent and green patina",
+      "tactical": "firing Bogline hooked tether",
+      "ultimate": "concentrating Bloodsense with bright green eyes"
+    },
+    {
+      "id": "mara-quell",
+      "name": "Mara Quell",
+      "identity": "deep purple pointed hood hiding shadow face, violet eyes, gold-edged broad robe with split hem, bell sleeves, gold sash and brass fittings",
+      "weapon": "large brass handbell",
+      "tactical": "placing Resonance Bell",
+      "ultimate": "casting Dead Chime with purple eyes and raised hands"
+    },
+    {
+      "id": "kest-rel",
+      "name": "Kest Rel",
+      "identity": "nimble masked rooftop thief, amber eyes, red headband and long red scarf, dark leather vest, tan straps, red knee and elbow pads",
+      "weapon": "steel grappling hook on short chain",
+      "tactical": "dashing Smoke Step with scarf streaming",
+      "ultimate": "deploying small Updraft furnace"
+    },
+    {
+      "id": "nox-calder",
+      "name": "Nox Calder",
+      "identity": "broad charcoal hood, face wrapped in grey scarf, amber eyes, long ragged black coat, grey bracers, brass buttons and black boots",
+      "weapon": "amber-lit black iron lantern hanging on short chain",
+      "tactical": "throwing Blackglass smoke canister",
+      "ultimate": "invoking Long Night with lantern shutter closing"
+    },
+    {
+      "id": "edda-morrow",
+      "name": "Edda Morrow",
+      "identity": "blonde woman with gold halo, white long coat and navy front panel, gold cuffs and armor accents, navy trousers and boots",
+      "weapon": "gold gem staff and round blue stained-glass shield",
+      "tactical": "sending Mercy Shard crystal from free hand",
+      "ultimate": "raising Rose Window prism with calm golden light"
+    },
+    {
+      "id": "selene-wraith",
+      "name": "Selene Wraith",
+      "identity": "slim silver-haired masked assassin with high silver ponytail, dark navy fitted sleeveless suit, blue scarf tails, orange leather fittings, icy blue eyes",
+      "weapon": "slender mercury spear with icy leaf-shaped blade",
+      "tactical": "blinking Quicksilver Echo",
+      "ultimate": "invoking Mirror Hunt with icy-blue highlights"
+    },
+    {
+      "id": "rusk-emberjaw",
+      "name": "Rusk Emberjaw",
+      "identity": "huge muscular pit fighter, scorched skin, iron skull jaw mask with orange vents, soot pauldrons and gauntlets, glowing orange furnace heart in chest, red loincloth, back smokestack",
+      "weapon": "oversized iron knuckle gauntlets with orange heat",
+      "tactical": "performing Shoulder Ram",
+      "ultimate": "igniting Kiln Heart furnace core"
+    },
+    {
+      "id": "father-thorne",
+      "name": "Father Thorne",
+      "identity": "hunched hooded botanist priest, deep forest-green robe, ragged moss cloak, pale jaw in hood shadow, green eyes, brass cross, brown belt, leaf sprigs",
+      "weapon": "crooked briar staff with leaves and glowing green bud",
+      "tactical": "planting Ironvine with hand to ground",
+      "ultimate": "summoning Overgrowth with raised arms"
+    }
+  ],
+  "groups": {
+    "core": [
+      [
+        "idle",
+        "breathing in relaxed ready stance",
+        true
+      ],
+      [
+        "run",
+        "four DIFFERENT running stride phases",
+        true
+      ],
+      [
+        "jump",
+        "jump anticipation then upward ascent",
+        false
+      ],
+      [
+        "fall",
+        "open descending pose with streaming cloth",
+        true
+      ],
+      [
+        "land",
+        "feet impact then compressed knees then stand",
+        false
+      ],
+      [
+        "crouch",
+        "lower into crouch then stay low",
+        false
+      ],
+      [
+        "opener",
+        "quick forward melee jab, readable preparation/contact/recoil/reset",
+        false
+      ],
+      [
+        "launcher",
+        "rising upward melee strike",
+        false
+      ],
+      [
+        "aerial",
+        "airborne forward melee sweep",
+        false
+      ],
+      [
+        "finisher",
+        "deep windup then committed long melee lunge",
+        false
+      ],
+      [
+        "shield",
+        "raise forearms in close guard then hold",
+        true
+      ],
+      [
+        "dodge",
+        "crouch then curl into ground roll then stand",
+        false
+      ],
+      [
+        "grab",
+        "reach and close the free hand to grasp an unseen opponent",
+        false
+      ],
+      [
+        "throw_forward",
+        "heave an unseen opponent forward to the right, NO second person",
+        false
+      ],
+      [
+        "tactical",
+        "FIGHTER_TACTICAL",
+        false
+      ],
+      [
+        "ultimate",
+        "FIGHTER_ULTIMATE",
+        false
+      ]
+    ],
+    "mobility": [
+      [
+        "walk",
+        "four distinct walking stride phases",
+        true
+      ],
+      [
+        "dash",
+        "sprint burst with body low then upright recovery",
+        false
+      ],
+      [
+        "brake",
+        "skid and plant feet to stop",
+        false
+      ],
+      [
+        "double_jump",
+        "tuck into second midair jump then extend",
+        false
+      ],
+      [
+        "fast_fall",
+        "streamlined downward dive, feet pointing down",
+        true
+      ],
+      [
+        "air_dodge",
+        "tucked airborne evasive twist",
+        false
+      ],
+      [
+        "recovery",
+        "strong upward recovery leap, one fist upward, body extended",
+        false
+      ],
+      [
+        "wall_cling",
+        "hands and feet against an INVISIBLE vertical wall on right",
+        true
+      ],
+      [
+        "ledge_hang",
+        "hanging by hands from INVISIBLE ledge on right",
+        true
+      ],
+      [
+        "ledge_climb",
+        "pull up onto INVISIBLE ledge then regain stance",
+        false
+      ],
+      [
+        "hurt",
+        "recoil from a light hit without gore",
+        false
+      ],
+      [
+        "tumble",
+        "four progressive airborne tumble rotations",
+        true
+      ],
+      [
+        "get_up",
+        "rise from lying down through kneel to standing",
+        false
+      ],
+      [
+        "ko",
+        "knockout falling onto back then resting without gore",
+        false
+      ],
+      [
+        "respawn",
+        "arrive floating, lower feet, land, ready",
+        false
+      ],
+      [
+        "victory",
+        "relaxed victorious flourish in character",
+        false
+      ]
+    ],
+    "advanced": [
+      [
+        "neutral_air",
+        "airborne radial close-range strike using both arms",
+        false
+      ],
+      [
+        "back_air",
+        "airborne strike behind body toward LEFT while body faces RIGHT",
+        false
+      ],
+      [
+        "up_air",
+        "airborne attack directly upward",
+        false
+      ],
+      [
+        "down_air",
+        "airborne attack straight down",
+        false
+      ],
+      [
+        "up_smash",
+        "crouched windup followed by powerful overhead strike",
+        false
+      ],
+      [
+        "down_smash",
+        "low grounded sweep in front and behind",
+        false
+      ],
+      [
+        "throw_back",
+        "throw unseen opponent over shoulder to LEFT",
+        false
+      ],
+      [
+        "throw_up",
+        "throw unseen opponent upward",
+        false
+      ],
+      [
+        "throw_down",
+        "slam unseen opponent downward without gore",
+        false
+      ],
+      [
+        "cast_forward",
+        "aim and fire signature weapon or open palm horizontally RIGHT, no projectile or muzzle flash",
+        false
+      ],
+      [
+        "cast_up",
+        "aim and fire weapon or open palm straight UP, no projectile or muzzle flash",
+        false
+      ],
+      [
+        "cast_down",
+        "aim and fire weapon or open palm straight DOWN, no projectile or muzzle flash",
+        false
+      ],
+      [
+        "cast_diagonal_up",
+        "aim and fire weapon or open palm 45 degrees UP RIGHT, no projectile or muzzle flash",
+        false
+      ],
+      [
+        "cast_diagonal_down",
+        "aim and fire weapon or open palm 45 degrees DOWN RIGHT, no projectile or muzzle flash",
+        false
+      ],
+      [
+        "pickup",
+        "crouch and pick up a small potion bottle then rise",
+        false
+      ],
+      [
+        "taunt",
+        "brief in-character confident beckon or flourish",
+        false
+      ]
+    ],
+    "reactions": [
+      [
+        "idle_relaxed",
+        "four subtly DIFFERENT relaxed breathing poses with gentle cloth motion",
+        true
+      ],
+      [
+        "idle_ready",
+        "four subtly DIFFERENT combat-ready weight shifts and breathing",
+        true
+      ],
+      [
+        "duck",
+        "stand then bend knees then settle into deep duck",
+        false
+      ],
+      [
+        "crouch_idle",
+        "four subtle breathing poses while staying crouched low",
+        true
+      ],
+      [
+        "crouch_walk",
+        "four distinct low crouch-walking stride phases",
+        true
+      ],
+      [
+        "hurt_crouch",
+        "crouched recoil from hit, head back, regain low guard",
+        false
+      ],
+      [
+        "hurt_air",
+        "airborne hit recoil then regain falling pose",
+        false
+      ],
+      [
+        "hurt_back",
+        "standing recoil from hit from BEHIND on left",
+        false
+      ],
+      [
+        "shield_hit",
+        "close guard absorbs impact with knees compressing then stabilizes",
+        false
+      ],
+      [
+        "shield_break",
+        "guard opens violently then dazed stagger without falling",
+        false
+      ],
+      [
+        "stun",
+        "dazed wobbling standing poses, no drawn stars",
+        true
+      ],
+      [
+        "frozen",
+        "body tense with blue ice shell attached to silhouette",
+        true
+      ],
+      [
+        "burning",
+        "body flinches with a few tiny amber flames near boots and shoulders",
+        true
+      ],
+      [
+        "grabbed",
+        "arms restrained forward by INVISIBLE opponent, struggle",
+        true
+      ],
+      [
+        "ledge_release",
+        "release INVISIBLE ledge on right then fall away",
+        false
+      ],
+      [
+        "defeat",
+        "lower head, sag shoulders, kneel in disappointed defeat",
+        false
+      ]
+    ]
+  }
+}

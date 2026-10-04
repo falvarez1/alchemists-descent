@@ -32,5 +32,5 @@ export class StockAttack implements StockAttackView {
 
 export function stockAttackOverlaps(spec: StockAttackSpec, facing: number, x: number, y: number, victimX: number, victimY: number): boolean {
   const dx = (victimX - x) * facing;
-  return dx + PLAYER_HALF_W >= 1 && dx - PLAYER_HALF_W <= spec.reach && victimY >= y + spec.top && victimY - PLAYER_H <= y + spec.bottom;
+  return dx + PLAYER_HALF_W >= (spec.minReach ?? 1) && dx - PLAYER_HALF_W <= spec.reach && victimY >= y + spec.top && victimY - PLAYER_H <= y + spec.bottom;
 }

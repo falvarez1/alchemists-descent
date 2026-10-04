@@ -1,0 +1,220 @@
+{
+  "format": "pass",
+  "timing": "pass",
+  "browser": "pass",
+  "clips": 289,
+  "frames": 3459,
+  "sourceBoundaryFlags": [],
+  "extractionReviewFlags": [],
+  "detachedComponentFlags": [
+    {
+      "id": "brann-rook/unarmed/taunt",
+      "components": [
+        {
+          "label": 142,
+          "count": 739,
+          "left": 1031,
+          "right": 1059,
+          "top": 439,
+          "bottom": 502
+        }
+      ]
+    },
+    {
+      "id": "brann-rook/unarmed/shield_break",
+      "components": [
+        {
+          "label": 14,
+          "count": 1149,
+          "left": 997,
+          "right": 1040,
+          "top": 76,
+          "bottom": 115
+        },
+        {
+          "label": 81,
+          "count": 1018,
+          "left": 1028,
+          "right": 1057,
+          "top": 192,
+          "bottom": 240
+        },
+        {
+          "label": 77,
+          "count": 990,
+          "left": 642,
+          "right": 674,
+          "top": 187,
+          "bottom": 228
+        },
+        {
+          "label": 161,
+          "count": 946,
+          "left": 325,
+          "right": 355,
+          "top": 532,
+          "bottom": 577
+        },
+        {
+          "label": 5,
+          "count": 779,
+          "left": 1303,
+          "right": 1337,
+          "top": 49,
+          "bottom": 82
+        },
+        {
+          "label": 2,
+          "count": 721,
+          "left": 957,
+          "right": 988,
+          "top": 45,
+          "bottom": 77
+        },
+        {
+          "label": 72,
+          "count": 651,
+          "left": 1385,
+          "right": 1412,
+          "top": 176,
+          "bottom": 209
+        },
+        {
+          "label": 214,
+          "count": 633,
+          "left": 1290,
+          "right": 1321,
+          "top": 744,
+          "bottom": 773
+        },
+        {
+          "label": 84,
+          "count": 624,
+          "left": 1130,
+          "right": 1156,
+          "top": 200,
+          "bottom": 231
+        },
+        {
+          "label": 213,
+          "count": 608,
+          "left": 920,
+          "right": 951,
+          "top": 735,
+          "bottom": 764
+        },
+        {
+          "label": 15,
+          "count": 507,
+          "left": 937,
+          "right": 982,
+          "top": 77,
+          "bottom": 112
+        }
+      ]
+    },
+    {
+      "id": "brann-rook/armed/shield_break",
+      "components": [
+        {
+          "label": 69,
+          "count": 808,
+          "left": 1011,
+          "right": 1043,
+          "top": 185,
+          "bottom": 220
+        },
+        {
+          "label": 145,
+          "count": 799,
+          "left": 293,
+          "right": 320,
+          "top": 424,
+          "bottom": 460
+        },
+        {
+          "label": 15,
+          "count": 684,
+          "left": 648,
+          "right": 677,
+          "top": 81,
+          "bottom": 114
+        },
+        {
+          "label": 2,
+          "count": 667,
+          "left": 1382,
+          "right": 1412,
+          "top": 51,
+          "bottom": 81
+        },
+        {
+          "label": 62,
+          "count": 649,
+          "left": 1393,
+          "right": 1423,
+          "top": 164,
+          "bottom": 193
+        },
+        {
+          "label": 27,
+          "count": 638,
+          "left": 1353,
+          "right": 1375,
+          "top": 98,
+          "bottom": 131
+        },
+        {
+          "label": 38,
+          "count": 586,
+          "left": 1015,
+          "right": 1045,
+          "top": 120,
+          "bottom": 146
+        },
+        {
+          "label": 14,
+          "count": 580,
+          "left": 1002,
+          "right": 1026,
+          "top": 79,
+          "bottom": 108
+        },
+        {
+          "label": 98,
+          "count": 562,
+          "left": 1395,
+          "right": 1420,
+          "top": 252,
+          "bottom": 282
+        },
+        {
+          "label": 147,
+          "count": 554,
+          "left": 669,
+          "right": 692,
+          "top": 425,
+          "bottom": 455
+        },
+        {
+          "label": 92,
+          "count": 546,
+          "left": 649,
+          "right": 677,
+          "top": 218,
+          "bottom": 247
+        }
+      ]
+    }
+  ],
+  "productionReady": false,
+  "animationReview": "Generated animation clips require motion and cross-state continuity review. The full roster replacement is in progress.",
+  "checks": [
+    "Transparent nonempty PNGs and atlas bounds",
+    "Fixed root and export gutters",
+    "Tick boundaries and held one-shot end",
+    "Attack phase boundaries, retiming and held hitstop age",
+    "Every clip loads and steps in the offline browser",
+    "Playback, restart and facing control"
+  ]
+}

@@ -1,0 +1,232 @@
+[
+  {
+    "id": "ilyra-voss/unarmed/idle_ready",
+    "status": "generated",
+    "generatedImage": "exec-d8dae249-1140-4c26-bc2b-e7b08b2ea7d4.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/crouch_idle",
+    "status": "generated",
+    "generatedImage": "exec-79e313b0-bfc7-47e1-9e42-e694240a72aa.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/stand_up",
+    "status": "generated",
+    "generatedImage": "exec-e3ea0fab-6874-476d-bd34-56d029e0d4d2.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/jump",
+    "status": "generated",
+    "generatedImage": "exec-98fe3e32-c96d-4d71-8134-92983ddd317c.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/fall",
+    "status": "generated",
+    "generatedImage": "exec-b2701ac6-e7c1-48d8-ae3a-7098d93984b5.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/land",
+    "status": "generated",
+    "generatedImage": "exec-ef00425a-5f62-4891-93ef-d2b436ea994a.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/hurt",
+    "status": "generated",
+    "generatedImage": "exec-8307e920-5897-457d-82b3-d0e8e56e5660.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/hurt_crouch",
+    "status": "generated",
+    "generatedImage": "exec-fe7629f2-01df-4b24-a9e0-89eeb8fe450a.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/hurt_air",
+    "status": "generated",
+    "generatedImage": "exec-1b9dfc03-9eab-4ee3-9d76-125ad0c03d3e.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/hurt_back",
+    "status": "generated",
+    "generatedImage": "exec-a145b208-f2ac-4eb1-97f1-1c4f75a02996.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/shield",
+    "status": "generated",
+    "generatedImage": "exec-daa6c6c3-53bd-4f22-b583-4886a67d96de.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/shield_hit",
+    "status": "generated",
+    "generatedImage": "exec-cb536444-489f-4594-b611-e57f1c9bd12b.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/opener",
+    "status": "generated",
+    "generatedImage": "exec-5e23945f-fa1d-4fd4-aaaa-40c74ea11c67.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/launcher",
+    "status": "generated",
+    "generatedImage": "exec-076144ee-ca5f-4ad8-98f9-152946ccd2af.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/aerial",
+    "status": "generated",
+    "generatedImage": "exec-39873a5c-ca0b-4b24-82f1-b1b83becc3e1.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/finisher",
+    "status": "generated",
+    "generatedImage": "exec-b574d6ba-4eb9-442d-b548-05ec80aaeb30.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/grab",
+    "status": "generated",
+    "generatedImage": "exec-1cb2ff1a-59c2-46a2-ba26-0b75628b7b91.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/throw_forward",
+    "status": "generated",
+    "generatedImage": "exec-61fb881f-5ce2-4161-8c3b-4b394fab2494.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/cast_forward",
+    "status": "generated",
+    "generatedImage": "exec-2430f804-0afb-4744-83ac-98837e00be96.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/pickup",
+    "status": "generated",
+    "generatedImage": "exec-dfd11f32-fce0-43c8-bd43-893131f952da.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/stun",
+    "status": "generated",
+    "generatedImage": "exec-0afc13a6-3bc4-4b07-b771-a6fb262cb864.png"
+  },
+  {
+    "id": "ilyra-voss/unarmed/defeat",
+    "status": "generated",
+    "generatedImage": "exec-70c92886-db56-4a85-be2a-f1f8369946d1.png"
+  },
+  {
+    "id": "ilyra-voss/armed/idle",
+    "status": "generated",
+    "generatedImage": "exec-2497851e-cf77-4de9-9d57-6b2cc7327478.png"
+  },
+  {
+    "id": "ilyra-voss/armed/idle_ready",
+    "status": "generated",
+    "generatedImage": "exec-82724bb6-fc65-4414-8b46-8f2eb1ed14fd.png"
+  },
+  {
+    "id": "ilyra-voss/armed/crouch_idle",
+    "status": "generated",
+    "generatedImage": "exec-d27582ba-e29f-40cb-a23c-ed54a33c317d.png"
+  },
+  {
+    "id": "ilyra-voss/armed/duck",
+    "status": "generated",
+    "generatedImage": "exec-35dde681-948e-4d35-878f-7530265357db.png"
+  },
+  {
+    "id": "ilyra-voss/armed/stand_up",
+    "status": "generated",
+    "generatedImage": "exec-1c72d939-4dc3-4228-ac2b-2c5c33275a4f.png"
+  },
+  {
+    "id": "ilyra-voss/armed/jump",
+    "status": "generated",
+    "generatedImage": "exec-6b22b675-bfcf-49c2-b424-f1af7224ce9b.png"
+  },
+  {
+    "id": "ilyra-voss/armed/fall",
+    "status": "generated",
+    "generatedImage": "exec-4eafe690-bb9a-47b7-a97d-641dbfa8d2ba.png"
+  },
+  {
+    "id": "ilyra-voss/armed/land",
+    "status": "generated",
+    "generatedImage": "exec-269e9cf0-014b-4041-9827-9a23bb3657ea.png"
+  },
+  {
+    "id": "ilyra-voss/armed/hurt",
+    "status": "generated",
+    "generatedImage": "exec-8e286848-687a-4b86-9720-19a1db5ceb71.png"
+  },
+  {
+    "id": "ilyra-voss/armed/hurt_crouch",
+    "status": "generated",
+    "generatedImage": "exec-992c73d6-063c-4525-8ed9-17ba9cba0d7a.png"
+  },
+  {
+    "id": "ilyra-voss/armed/hurt_air",
+    "status": "generated",
+    "generatedImage": "exec-0d9bcce9-14af-418e-b0af-f859a24178f5.png"
+  },
+  {
+    "id": "ilyra-voss/armed/hurt_back",
+    "status": "generated",
+    "generatedImage": "exec-96c7ed77-69dd-457f-a6ce-edf8d743b1eb.png"
+  },
+  {
+    "id": "ilyra-voss/armed/shield",
+    "status": "generated",
+    "generatedImage": "exec-81aa630d-6459-49aa-b5df-eb81e23ceee3.png"
+  },
+  {
+    "id": "ilyra-voss/armed/shield_hit",
+    "status": "generated",
+    "generatedImage": "exec-0cda2a86-d009-4f48-a094-40babde2488b.png"
+  },
+  {
+    "id": "ilyra-voss/armed/opener",
+    "status": "generated",
+    "generatedImage": "exec-3be1fa7f-242d-4e2d-9258-6c40402f05ab.png"
+  },
+  {
+    "id": "ilyra-voss/armed/launcher",
+    "status": "generated",
+    "generatedImage": "exec-026f8ab0-ef08-4e15-9fea-97a82b9f297d.png"
+  },
+  {
+    "id": "ilyra-voss/armed/aerial",
+    "status": "generated",
+    "generatedImage": "exec-0d307214-9284-4155-a028-4d5a511db000.png"
+  },
+  {
+    "id": "ilyra-voss/armed/finisher",
+    "status": "generated",
+    "generatedImage": "exec-91a5a571-b8e2-46e6-b003-f54c9e179ca8.png"
+  },
+  {
+    "id": "ilyra-voss/armed/grab",
+    "status": "generated",
+    "generatedImage": "exec-1bc1a3ab-e1bd-497f-8f55-7a4f21c8084e.png"
+  },
+  {
+    "id": "ilyra-voss/armed/throw_forward",
+    "status": "generated",
+    "generatedImage": "exec-f5f658d8-e89c-41fb-9083-07bc2e5ac012.png"
+  },
+  {
+    "id": "ilyra-voss/armed/cast_forward",
+    "status": "generated",
+    "generatedImage": "exec-4dadd9a4-3bcc-41e8-a91b-dc0af64f2fcc.png"
+  },
+  {
+    "id": "ilyra-voss/armed/pickup",
+    "status": "generated",
+    "generatedImage": "exec-4a94b099-4ed9-445f-b6b1-bcc0992ca366.png"
+  },
+  {
+    "id": "ilyra-voss/armed/stun",
+    "status": "generated",
+    "generatedImage": "exec-6a1e8abf-c7fa-4d4b-b169-edb0056b5003.png"
+  },
+  {
+    "id": "ilyra-voss/armed/defeat",
+    "status": "generated",
+    "generatedImage": "exec-bd6d6277-4e24-4e6d-b39f-77aba5d62966.png"
+  }
+]

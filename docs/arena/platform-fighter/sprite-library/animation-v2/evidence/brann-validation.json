@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-04",
+  "branch": "feature/brann-animation-completion",
+  "delivery": "local worktree; not committed, merged or deployed",
+  "checks": {
+    "typecheck": "pass",
+    "build": "pass; existing large-chunk warning",
+    "eslintChangedFiles": "pass",
+    "diffWhitespace": "pass",
+    "fullVitest": {
+      "files": 284,
+      "tests": 3413,
+      "result": "pass"
+    },
+    "subsequentControlsRegression": {
+      "files": 5,
+      "tests": 43,
+      "result": "pass; includes one new regression test"
+    },
+    "animationBrowser": "pass; 63 animations, 921 packed frames, 30 attack phases, both ledges",
+    "playableBrowser": "pass; six attacks damage, keyboard/controller inputs, double jump, effects lifetime/reset",
+    "lanBrowser": "pass; two browser clients, new moves, damage, pause, rematch, reconnect"
+  },
+  "limitations": [
+    "Not tested on two physical computers",
+    "Full slow-motion art acceptance, tumble polish and per-frame sockets remain open",
+    "Unarmed variants are export assets; reserved poses have no new gameplay command",
+    "Remaining roster and support gaps are listed in completion.csv"
+  ]
+}

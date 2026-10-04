@@ -854,7 +854,8 @@ export class BasicBrain implements Brain {
     this.learning.attempt(context, strike, tick, tick + 90 + this.exec.tier.reaction, `melee.${strike}`, target.foe.slot ?? -1,
       this.lastApproach && tick < this.lastApproach.until ? this.lastApproach : undefined);
     st.stats[`move_${strike}`] = (st.stats[`move_${strike}`] ?? 0) + 1;
-    self.hands.kick(); hand.pressed(); this.lastKick = tick; st.stats.kicks++;
+    if (self.hands.attack) self.hands.attack(strike, order.facing); else self.hands.kick();
+    hand.pressed(); this.lastKick = tick; st.stats.kicks++;
     st.action = 'kick';
     this.actionPerformed('kick');
   }

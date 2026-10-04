@@ -1,0 +1,55 @@
+{
+  "movement": {
+    "before": [
+      {
+        "x": 680,
+        "y": 639
+      },
+      {
+        "x": 920,
+        "y": 639
+      }
+    ],
+    "host": [
+      {
+        "x": 680,
+        "y": 639
+      },
+      {
+        "x": 899,
+        "y": 639
+      }
+    ],
+    "guest": [
+      {
+        "x": 680,
+        "y": 639
+      },
+      {
+        "x": 899,
+        "y": 639
+      }
+    ]
+  },
+  "damage": [
+    9.4,
+    0
+  ],
+  "brann": [
+    [
+      "opener",
+      "up_smash",
+      "up_air"
+    ],
+    [
+      "opener",
+      "up_smash",
+      "up_air"
+    ]
+  ],
+  "winner": 0,
+  "rematch": true,
+  "reconnect": true,
+  "replicaDoesNotSimulate": true,
+  "errors": []
+}

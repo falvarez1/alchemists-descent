@@ -421,6 +421,10 @@ export class FighterSystem implements FighterApi {
     this.guard(() => this.kit?.onPlayerHurt?.(lost, source));
   }
 
+  noteStockHurt(amount: number): void {
+    if (this.id !== null && Number.isFinite(amount) && amount > 0) this.noteHurt(amount);
+  }
+
   // ======================================================================== modifiers and armor
 
   /**

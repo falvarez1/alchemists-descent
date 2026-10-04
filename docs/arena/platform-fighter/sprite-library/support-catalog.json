@@ -1,0 +1,1058 @@
+[
+  {
+    "id": "combat-fx",
+    "kind": "effects",
+    "actions": [
+      [
+        "hit_light",
+        "small ivory four-point contact spark",
+        true
+      ],
+      [
+        "hit_heavy",
+        "large amber jagged contact burst",
+        true
+      ],
+      [
+        "slash_horizontal",
+        "short white horizontal crescent slash",
+        true
+      ],
+      [
+        "slash_vertical",
+        "short upward ivory crescent slash",
+        true
+      ],
+      [
+        "thrust",
+        "narrow amber forward stab streak",
+        true
+      ],
+      [
+        "smash_ground",
+        "amber semicircular ground shockwave",
+        true
+      ],
+      [
+        "shield_block",
+        "blue-white ring fragment on impact",
+        true
+      ],
+      [
+        "parry",
+        "gold star-shaped parry spark",
+        true
+      ],
+      [
+        "shield_break",
+        "blue glass bubble bursting into shards",
+        true
+      ],
+      [
+        "grab_contact",
+        "small pale circular clasp accent",
+        true
+      ],
+      [
+        "throw_trail",
+        "curved ivory throw motion streak",
+        true
+      ],
+      [
+        "launch_trail",
+        "orange tapered knockback streak",
+        true
+      ],
+      [
+        "ko_burst",
+        "teal and amber outward starburst",
+        true
+      ],
+      [
+        "respawn_ring",
+        "teal protective magic ring",
+        true
+      ],
+      [
+        "charge",
+        "small golden energy gathering orb",
+        true
+      ],
+      [
+        "special_empty",
+        "two dim broken gold charge diamonds",
+        true
+      ]
+    ],
+    "source": "sources/effects/combat-fx.png",
+    "output": "effects/combat-fx.png"
+  },
+  {
+    "id": "movement-status-fx",
+    "kind": "effects",
+    "actions": [
+      [
+        "run_dust",
+        "grey low running dust puff",
+        true
+      ],
+      [
+        "skid_dust",
+        "grey sideways skid plume",
+        true
+      ],
+      [
+        "jump_dust",
+        "small grey ground takeoff burst",
+        true
+      ],
+      [
+        "land_dust",
+        "two symmetrical low landing dust puffs",
+        true
+      ],
+      [
+        "double_jump_ring",
+        "small ivory air jump ring",
+        true
+      ],
+      [
+        "air_dodge_wisp",
+        "short pale blue evasion wisp",
+        true
+      ],
+      [
+        "recovery_jet",
+        "teal upward thrust stream",
+        true
+      ],
+      [
+        "ledge_spark",
+        "tiny white ledge hand contact spark",
+        true
+      ],
+      [
+        "burn",
+        "compact orange flame licking upward",
+        true
+      ],
+      [
+        "frost",
+        "pale blue frost crystals growing outward",
+        true
+      ],
+      [
+        "electric",
+        "short branching blue electric arc",
+        true
+      ],
+      [
+        "poison",
+        "green toxic droplets and vapor",
+        true
+      ],
+      [
+        "stun_stars",
+        "three tiny golden stars circling an empty center",
+        true
+      ],
+      [
+        "heal",
+        "small floating mint-green cross sparkles",
+        true
+      ],
+      [
+        "armor",
+        "warm gold protective hexagonal glint",
+        true
+      ],
+      [
+        "invulnerable",
+        "pale teal translucent oval ring shimmer",
+        true
+      ]
+    ],
+    "source": "sources/effects/movement-status-fx.png",
+    "output": "effects/movement-status-fx.png"
+  },
+  {
+    "id": "projectiles",
+    "kind": "effects",
+    "actions": [
+      [
+        "spark_bolt",
+        "amber spell bolt pointing right",
+        true
+      ],
+      [
+        "heavy_spark",
+        "large copper-orange spell bolt pointing right",
+        true
+      ],
+      [
+        "wisp",
+        "green seeking spirit orb",
+        true
+      ],
+      [
+        "electric_bolt",
+        "violet-blue charged bolt pointing right",
+        true
+      ],
+      [
+        "rapid_dart",
+        "thin orange needle pointing right",
+        true
+      ],
+      [
+        "trigger_orb",
+        "amber orb with dark outer ring",
+        true
+      ],
+      [
+        "ice_lance",
+        "long icy-blue spearhead pointing right",
+        true
+      ],
+      [
+        "frost_shard",
+        "angular blue ice shard pointing right",
+        true
+      ],
+      [
+        "mercury_bolt",
+        "silver-blue ricochet bolt pointing right",
+        true
+      ],
+      [
+        "warp_bolt",
+        "violet-blue twisting bolt pointing right",
+        true
+      ],
+      [
+        "cast_bomb",
+        "round iron bomb with glowing orange fuse",
+        true
+      ],
+      [
+        "flame_jet",
+        "short orange flame cone pointing right",
+        true
+      ],
+      [
+        "acid_glob",
+        "lime acid droplet moving right",
+        true
+      ],
+      [
+        "black_hole",
+        "small violet-black swirling circular gravity well",
+        true
+      ],
+      [
+        "stone_disc",
+        "spinning grey stone disc with gold flecks",
+        true
+      ],
+      [
+        "thorn_bolt",
+        "green thorn dart pointing right",
+        true
+      ]
+    ],
+    "source": "sources/effects/projectiles.png",
+    "output": "effects/projectiles.png"
+  },
+  {
+    "id": "weapons",
+    "kind": "props",
+    "actions": [
+      [
+        "ilyra_wand",
+        "Ilyra brass pistol-wand",
+        false
+      ],
+      [
+        "brann_rod",
+        "Brann brass pressure rod",
+        false
+      ],
+      [
+        "brann_shield",
+        "Brann heavy black-iron tower shield with brass rim",
+        false
+      ],
+      [
+        "sable_sickle",
+        "Sable wood sickle staff with steel crescent and green drops",
+        false
+      ],
+      [
+        "mara_bell",
+        "Mara brass handbell",
+        false
+      ],
+      [
+        "kest_hook",
+        "Kest steel grapple hook and short chain",
+        false
+      ],
+      [
+        "nox_lantern",
+        "Nox black iron amber lantern",
+        false
+      ],
+      [
+        "edda_staff",
+        "Edda golden gem staff",
+        false
+      ],
+      [
+        "edda_shield",
+        "Edda round blue stained-glass gold-rim shield",
+        false
+      ],
+      [
+        "selene_spear",
+        "Selene slim silver-blue mercury spear",
+        false
+      ],
+      [
+        "rusk_gauntlet",
+        "Rusk heated iron fist gauntlet",
+        false
+      ],
+      [
+        "thorne_staff",
+        "Thorne crooked leafy briar staff",
+        false
+      ],
+      [
+        "crucible_vial",
+        "orange alchemical vial",
+        false
+      ],
+      [
+        "blackglass_canister",
+        "black metal smoke canister",
+        false
+      ],
+      [
+        "bogline_hook",
+        "green barbed tether hook",
+        false
+      ],
+      [
+        "mercy_shard",
+        "gold and rose faceted glass crystal",
+        false
+      ]
+    ],
+    "source": "sources/props/weapons.png",
+    "output": "props/weapons.png"
+  },
+  {
+    "id": "items-devices",
+    "kind": "props",
+    "actions": [
+      [
+        "health_flask",
+        "small red healing potion",
+        false
+      ],
+      [
+        "water_flask",
+        "small blue water flask",
+        false
+      ],
+      [
+        "oil_flask",
+        "amber oil flask",
+        false
+      ],
+      [
+        "slime_flask",
+        "green slime flask",
+        false
+      ],
+      [
+        "nitrogen_flask",
+        "pale blue chilled flask",
+        false
+      ],
+      [
+        "powder_pouch",
+        "brown gunpowder pouch",
+        false
+      ],
+      [
+        "special_charge",
+        "small teal and gold energy crystal",
+        false
+      ],
+      [
+        "armor_pickup",
+        "iron armor scrap with gold rivets",
+        false
+      ],
+      [
+        "supply_crate",
+        "small strapped wooden supply crate",
+        false
+      ],
+      [
+        "powder_keg",
+        "wooden keg with fuse",
+        false
+      ],
+      [
+        "resonance_bell",
+        "purple and brass placed resonance bell",
+        false
+      ],
+      [
+        "updraft_furnace",
+        "compact copper portable furnace",
+        false
+      ],
+      [
+        "rose_window",
+        "gold-rim blue and rose stained-glass prism",
+        false
+      ],
+      [
+        "ironvine_seed",
+        "thorny green seed pod",
+        false
+      ],
+      [
+        "echo_beacon",
+        "silver-blue mercury decoy anchor",
+        false
+      ],
+      [
+        "respawn_dais",
+        "small teal-lit round respawn pedestal",
+        false
+      ]
+    ],
+    "source": "sources/props/items-devices.png",
+    "output": "props/items-devices.png"
+  },
+  {
+    "id": "stage-kit",
+    "kind": "props",
+    "actions": [
+      [
+        "foundry_platform",
+        "horizontal dark steel platform with readable copper top edge",
+        false
+      ],
+      [
+        "kiln_platform",
+        "horizontal scorched brick platform with amber top edge",
+        false
+      ],
+      [
+        "cistern_platform",
+        "horizontal wet slate platform with teal top edge",
+        false
+      ],
+      [
+        "gallery_platform",
+        "horizontal carved stone platform with ivory top edge",
+        false
+      ],
+      [
+        "steel_ledge",
+        "small riveted steel ledge bracket",
+        false
+      ],
+      [
+        "stone_ledge",
+        "small chipped stone ledge bracket",
+        false
+      ],
+      [
+        "chain",
+        "vertical hanging heavy iron chain segment",
+        false
+      ],
+      [
+        "pipe",
+        "copper bent pipe segment",
+        false
+      ],
+      [
+        "gear",
+        "large dark iron cogwheel",
+        false
+      ],
+      [
+        "support",
+        "riveted steel support column",
+        false
+      ],
+      [
+        "lamp_teal",
+        "caged teal lamp",
+        false
+      ],
+      [
+        "lamp_amber",
+        "caged amber lamp",
+        false
+      ],
+      [
+        "vent",
+        "horizontal steam vent grate",
+        false
+      ],
+      [
+        "brazier",
+        "small iron brazier with embers",
+        false
+      ],
+      [
+        "rubble",
+        "small pile of slate rubble",
+        false
+      ],
+      [
+        "briar_patch",
+        "small ground patch of thorny moss-green vines",
+        false
+      ]
+    ],
+    "source": "sources/props/stage-kit.png",
+    "output": "props/stage-kit.png"
+  },
+  {
+    "id": "hud-icons",
+    "kind": "ui",
+    "actions": [
+      [
+        "stock",
+        "ivory diamond stock life token",
+        false
+      ],
+      [
+        "special_charge",
+        "teal gem in copper socket",
+        false
+      ],
+      [
+        "shield",
+        "blue shield emblem",
+        false
+      ],
+      [
+        "attack",
+        "crossed ivory fist and blade emblem",
+        false
+      ],
+      [
+        "grab",
+        "gold open hand emblem",
+        false
+      ],
+      [
+        "jump",
+        "teal upward wing emblem",
+        false
+      ],
+      [
+        "dodge",
+        "pale blue curved motion emblem",
+        false
+      ],
+      [
+        "recovery",
+        "teal upward arrow in copper ring",
+        false
+      ],
+      [
+        "timer",
+        "small ivory-faced copper clock",
+        false
+      ],
+      [
+        "sudden_death",
+        "orange flame inside warning diamond",
+        false
+      ],
+      [
+        "winner",
+        "gold laurel crown",
+        false
+      ],
+      [
+        "rematch",
+        "two ivory curved arrows",
+        false
+      ],
+      [
+        "controller",
+        "dark controller with ivory buttons",
+        false
+      ],
+      [
+        "keyboard",
+        "dark three-key keyboard cluster",
+        false
+      ],
+      [
+        "player_one",
+        "solid teal pennant marker",
+        false
+      ],
+      [
+        "player_two",
+        "solid amber pennant marker",
+        false
+      ]
+    ],
+    "source": "sources/ui/hud-icons.png",
+    "output": "ui/hud-icons.png"
+  },
+  {
+    "id": "kit-fx-1",
+    "kind": "effects",
+    "actions": [
+      [
+        "ilyra-voss-crucible_spin",
+        "orange thrown vial rotating",
+        true
+      ],
+      [
+        "ilyra-voss-crucible_burst",
+        "amber alchemical explosion",
+        true
+      ],
+      [
+        "ilyra-voss-scorch",
+        "tiny orange burning ember cluster",
+        true
+      ],
+      [
+        "ilyra-voss-phoenix_aura",
+        "amber phoenix-wing shaped ring",
+        true
+      ],
+      [
+        "ilyra-voss-fire_trail",
+        "low orange burning ground trail",
+        true
+      ],
+      [
+        "ilyra-voss-volatile_spark",
+        "two merging orange sparks",
+        true
+      ],
+      [
+        "ilyra-voss-phoenix_charge",
+        "small amber gathering plume",
+        true
+      ],
+      [
+        "ilyra-voss-crucible_fragments",
+        "flying golden glass fragments",
+        true
+      ],
+      [
+        "brann-rook-guard_plate",
+        "black iron plate unfolding",
+        true
+      ],
+      [
+        "brann-rook-guard_impact",
+        "sparks against invisible plate",
+        true
+      ],
+      [
+        "brann-rook-pressure",
+        "amber gauge-like circular pressure glow",
+        true
+      ],
+      [
+        "brann-rook-redline_aura",
+        "warm white steam wreath",
+        true
+      ],
+      [
+        "brann-rook-steam_jet",
+        "short white steam jet",
+        true
+      ],
+      [
+        "brann-rook-vent_cloud",
+        "round grey steam cloud",
+        true
+      ],
+      [
+        "brann-rook-armor_scraps",
+        "small iron and brass fragments",
+        true
+      ],
+      [
+        "brann-rook-boiler_flare",
+        "amber boiler vent flare",
+        true
+      ]
+    ],
+    "source": "sources/effects/kit-fx-1.png",
+    "output": "effects/kit-fx-1.png"
+  },
+  {
+    "id": "kit-fx-2",
+    "kind": "effects",
+    "actions": [
+      [
+        "sable-fen-bogline_tip",
+        "green steel hook flying right",
+        true
+      ],
+      [
+        "sable-fen-bogline_rope",
+        "short taut rope segment",
+        true
+      ],
+      [
+        "sable-fen-spoor",
+        "three small green glowing footprints",
+        true
+      ],
+      [
+        "sable-fen-bloodsense",
+        "green expanding targeting ring",
+        true
+      ],
+      [
+        "sable-fen-mire_splash",
+        "green mire droplets",
+        true
+      ],
+      [
+        "sable-fen-hook_contact",
+        "small green hook contact spark",
+        true
+      ],
+      [
+        "sable-fen-reveal_mark",
+        "green eye emblem hovering",
+        true
+      ],
+      [
+        "sable-fen-spore_cloud",
+        "green glowing spore cloud",
+        true
+      ],
+      [
+        "mara-quell-bell_pulse",
+        "violet concentric ring from a tiny brass bell",
+        true
+      ],
+      [
+        "mara-quell-resonance_wave",
+        "short purple expanding wavefront",
+        true
+      ],
+      [
+        "mara-quell-dead_chime",
+        "purple jagged circular shockwave",
+        true
+      ],
+      [
+        "mara-quell-sound_ripple",
+        "three thin violet arcs",
+        true
+      ],
+      [
+        "mara-quell-revealed_mark",
+        "small violet eye emblem",
+        true
+      ],
+      [
+        "mara-quell-bell_charge",
+        "gold bell-shaped aura",
+        true
+      ],
+      [
+        "mara-quell-disrupt",
+        "violet broken gear spark",
+        true
+      ],
+      [
+        "mara-quell-chime_motes",
+        "gold and violet bell-shaped motes",
+        true
+      ]
+    ],
+    "source": "sources/effects/kit-fx-2.png",
+    "output": "effects/kit-fx-2.png"
+  },
+  {
+    "id": "kit-fx-3",
+    "kind": "effects",
+    "actions": [
+      [
+        "kest-rel-smoke_step",
+        "grey smoke puff stretching right",
+        true
+      ],
+      [
+        "kest-rel-smoke_trail",
+        "low soot streak",
+        true
+      ],
+      [
+        "kest-rel-updraft",
+        "spiral orange thermal updraft",
+        true
+      ],
+      [
+        "kest-rel-furnace_ignite",
+        "small orange furnace ignition flame",
+        true
+      ],
+      [
+        "kest-rel-hook_glint",
+        "steel crescent hook glint",
+        true
+      ],
+      [
+        "kest-rel-chimney_soot",
+        "rising grey soot flecks",
+        true
+      ],
+      [
+        "kest-rel-draft_ring",
+        "pale orange circular air ripple",
+        true
+      ],
+      [
+        "kest-rel-runner_spark",
+        "tiny orange boot spark",
+        true
+      ],
+      [
+        "nox-calder-blackglass_smoke",
+        "dense charcoal smoke bloom",
+        true
+      ],
+      [
+        "nox-calder-canister_spin",
+        "black smoke canister rotating",
+        true
+      ],
+      [
+        "nox-calder-long_night",
+        "dark purple ring with soft smoky edge",
+        true
+      ],
+      [
+        "nox-calder-soot_eye",
+        "two small amber eyes in small smoke wisp",
+        true
+      ],
+      [
+        "nox-calder-lantern_flare",
+        "small amber lantern light flare",
+        true
+      ],
+      [
+        "nox-calder-extinguish",
+        "grey puff with fading amber spark",
+        true
+      ],
+      [
+        "nox-calder-shadow_pool",
+        "flat dark violet ground mist",
+        true
+      ],
+      [
+        "nox-calder-blackglass_shards",
+        "black glass fragments with gold glints",
+        true
+      ]
+    ],
+    "source": "sources/effects/kit-fx-3.png",
+    "output": "effects/kit-fx-3.png"
+  },
+  {
+    "id": "kit-fx-4",
+    "kind": "effects",
+    "actions": [
+      [
+        "edda-morrow-mercy_shard",
+        "golden rose glass shard floating",
+        true
+      ],
+      [
+        "edda-morrow-mercy_aura",
+        "gold and blue protective oval ring",
+        true
+      ],
+      [
+        "edda-morrow-rose_pulse",
+        "rose and blue circular stained glass pulse",
+        true
+      ],
+      [
+        "edda-morrow-refraction",
+        "three prismatic bent light rays",
+        true
+      ],
+      [
+        "edda-morrow-stored_light",
+        "warm gold mote orbiting",
+        true
+      ],
+      [
+        "edda-morrow-healing_motes",
+        "small mint and gold healing sparks",
+        true
+      ],
+      [
+        "edda-morrow-glass_break",
+        "blue and rose glass shards",
+        true
+      ],
+      [
+        "edda-morrow-halo_bloom",
+        "warm gold halo ring",
+        true
+      ],
+      [
+        "selene-wraith-echo_spawn",
+        "small silver-blue humanoid-shaped ghost wisp without face",
+        true
+      ],
+      [
+        "selene-wraith-blink_in",
+        "silver-blue inward spiral",
+        true
+      ],
+      [
+        "selene-wraith-blink_out",
+        "silver-blue outward spiral",
+        true
+      ],
+      [
+        "selene-wraith-mercury_trail",
+        "flat silver liquid streak",
+        true
+      ],
+      [
+        "selene-wraith-mirror_shards",
+        "icy-blue reflective fragments",
+        true
+      ],
+      [
+        "selene-wraith-mirror_hunt",
+        "two tiny mirrored ghost wisps orbiting empty center",
+        true
+      ],
+      [
+        "selene-wraith-liquid_splash",
+        "silver-blue droplets",
+        true
+      ],
+      [
+        "selene-wraith-echo_fade",
+        "silver-blue ghost wisp dissolving",
+        true
+      ]
+    ],
+    "source": "sources/effects/kit-fx-4.png",
+    "output": "effects/kit-fx-4.png"
+  },
+  {
+    "id": "kit-fx-5",
+    "kind": "effects",
+    "actions": [
+      [
+        "rusk-emberjaw-ram_trail",
+        "orange heated shoulder-shaped motion streak",
+        true
+      ],
+      [
+        "rusk-emberjaw-ram_contact",
+        "orange iron impact sparks",
+        true
+      ],
+      [
+        "rusk-emberjaw-kiln_aura",
+        "orange-red furnace circle",
+        true
+      ],
+      [
+        "rusk-emberjaw-kiln_embers",
+        "hot orange ember cloud",
+        true
+      ],
+      [
+        "rusk-emberjaw-scrap_recovery",
+        "iron scraps gathering toward orange center",
+        true
+      ],
+      [
+        "rusk-emberjaw-furnace_vent",
+        "orange flame and grey smoke jet",
+        true
+      ],
+      [
+        "rusk-emberjaw-hot_fist",
+        "small orange flame crown",
+        true
+      ],
+      [
+        "rusk-emberjaw-heat_wave",
+        "amber expanding heat ring",
+        true
+      ],
+      [
+        "father-thorne-ironvine_grow",
+        "green thorny vine sprouting upward",
+        true
+      ],
+      [
+        "father-thorne-ironvine_segment",
+        "curved green thorn vine segment",
+        true
+      ],
+      [
+        "father-thorne-overgrowth",
+        "green roots erupting from ground",
+        true
+      ],
+      [
+        "father-thorne-root_grip",
+        "green roots curling around empty center",
+        true
+      ],
+      [
+        "father-thorne-leaf_burst",
+        "olive-green leaves scattering",
+        true
+      ],
+      [
+        "father-thorne-camouflage",
+        "moss-green leaf-shaped mist",
+        true
+      ],
+      [
+        "father-thorne-thorn_contact",
+        "lime thorn contact spark",
+        true
+      ],
+      [
+        "father-thorne-briar_pollen",
+        "tiny glowing green pollen motes",
+        true
+      ]
+    ],
+    "source": "sources/effects/kit-fx-5.png",
+    "output": "effects/kit-fx-5.png"
+  }
+]
