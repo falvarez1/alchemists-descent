@@ -1,7 +1,10 @@
 name: CI
 
-# Typecheck, lint, tests, and generated WASM validation on every push/PR. The
-# Pages deploy uses the same strict `npm run build` entry point.
+# The backstop, not the gate (docs/split/SPLIT-PLAN.md D15): every change is verified locally first (typecheck, lint,
+# tests, build, the oracles and the gate probes). This workflow re-runs the FAST checks on every PR and push to main,
+# in two parallel jobs: the static checks, and a browser smoke with one findability seed. The full suite (every seed,
+# encounter lairs, all 15 gate probes) runs nightly in nightly.yml. The Pages deploy uses the same strict
+# `npm run build` entry point.
 on:
   push:
     branches: [main]
@@ -18,6 +21,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -55,8 +59,8 @@ jobs:
           git diff --exit-code -- src/world/virtual/wasm/roundCornersWasm.ts
 
   browser-smoke:
-    needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -92,7 +96,8 @@ jobs:
           # occasionally leaves it standing for the whole window. One retry.
           node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/ || node scripts/verify-debug-tool.mjs http://127.0.0.1:5173/
           node scripts/verify-builder-expedition.mjs http://127.0.0.1:5173/
-          npm run verify:findability -- http://127.0.0.1:5173/
+          # One seed, every floor: the smoke. Every seed and the encounter lairs run nightly.
+          node scripts/verify-findability.mjs http://127.0.0.1:5173/ 1
           # Two browser contexts against this dev server: the /builder.html
           # editor route and the play route, syncing over the relay the dev
           # server mounts. The editor route once sat broken for weeks because
@@ -102,8 +107,8 @@ jobs:
       - name: Builder production lazy-load network probe
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chromium
-        # The player build (checked above) carries no Builder at all; this probe
-        # needs the production AUTHORING build, whose Builder must stay lazy.
+        # The player build carries no Builder at all; this probe needs the
+        # production AUTHORING build, whose Builder must stay lazy.
         run: |
           GH_PAGES=true npm run build:authoring
           npm run preview:dist -- --host 127.0.0.1 --port 4173 --base /alchemists-descent/ &
