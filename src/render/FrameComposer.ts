@@ -1,5 +1,7 @@
 import { drawStoryLayer } from '@/render/story/StoryLayer';
 import { drawStockStageArt } from '@/render/StockStageArt';
+import { drawStageAtmosphere } from '@/render/duel/StageAtmosphere';
+import { drawDuelKoFx } from '@/render/duel/DuelKoFx';
 import { drawPlayerRagdollSprite } from '@/render/sprites/PlayerRagdollSprite';
 import { drawTrickshotOverlay } from '@/render/TrickshotOverlay';
 import { drawFallingWater } from '@/render/FallingWater';
@@ -1156,6 +1158,7 @@ export class FrameComposer implements PixelSurface {
 
   private composeOverlays(ctx: Ctx): void {
     drawStockStageArt(this, ctx, this.light);
+    drawStageAtmosphere(this, ctx);
     // Depth particles behind the play layer (over open air only), under every
     // sprite — unless the presentation draws them as GL points.
     const depthParticles = this.target.nativeDepthParticles !== true;
@@ -1241,6 +1244,7 @@ export class FrameComposer implements PixelSurface {
     drawTrickshotOverlay(this, ctx);
     drawFighterFx(this, this.light, ctx, 'over');
     this.forRivals(ctx, () => drawFighterFx(this, this.light, ctx, 'over'));
+    drawDuelKoFx(this, ctx);
   }
 
   /** ARENA: run `fn` once for each rival, with that fighter's bundle installed (so the sprite and fx read ITS body, wands and kit). */

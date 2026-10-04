@@ -6,7 +6,7 @@ import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 import { ARENA_RULES } from '@/config/arenaRules';
-import { STOCK_RULES } from '@/config/stockRules';
+import { STOCK_RULES, stockHitstopTicks } from '@/config/stockRules';
 import type { BlastZone, StockLedgeInput, StockMatchView } from '@/core/arenaMatch';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
@@ -752,6 +752,9 @@ export class ArenaSlots implements ArenaApi {
           this.specials[hit.attacker].rewardMelee();
           this.lastBlow[hit.victim] = { by: hit.attacker, at: this.ctx.state.frameCount, landed: false };
           this.ctx.audio.sfx(hit.kind === 'finisher' || hit.spec.name === 'Up smash' ? 'arena.hit.heavy' : 'arena.hit.light');
+          // The blow lands: the game holds for a beat that grows with the damage (render shakes the struck fighter).
+          const fx = this.ctx.fx as Ctx['fx'] | undefined; // (headless arenas have no presentation state)
+          if (fx) fx.hitstop = Math.max(fx.hitstop ?? 0, stockHitstopTicks(hit.spec.damage));
         }
       } finally { this.blow = was; }
     }
@@ -782,6 +785,9 @@ export class ArenaSlots implements ArenaApi {
       this.bout.downs.push(ev);
       p.dead = true; p.firing = false; p.vx = 0; p.vy = 0;
       this.launchTicks[slot] = 0;
+      // A ring-out lands like a blast: the screen kicks (render draws the burst at the edge it left by).
+      const fx = this.ctx.fx as Ctx['fx'] | undefined;
+      if (fx) fx.screenShake = Math.max(fx.screenShake ?? 0, 0.075);
       this.ctx.events.emit('fighterDown', ev);
     }
     for (const slot of changes.respawns) {

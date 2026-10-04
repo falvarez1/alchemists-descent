@@ -3,14 +3,18 @@ import type { Ctx } from '@/core/types';
 import { makeSkeleton, poseAlchemist } from '@/entities/playerPose';
 import type { V } from '@/entities/playerPose';
 import type { PixelSurface } from '@/render/pixels';
-import { drawDuelGhost } from '@/render/duel/DuelFighterSprites';
+import { drawDuelGhost, noteDuelPresence } from '@/render/duel/DuelFighterSprites';
+import { drawDuelDust } from '@/render/duel/DuelDust';
 
 const pose = makeSkeleton();
 
 /** Narrow motion accents from concepts/motion-defense.png, tied to real action state. */
 export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
   const arena = ctx.arena, p = ctx.player;
-  if (!arena?.stockMatch || p.dead) return;
+  if (!arena?.stockMatch) return;
+  noteDuelPresence(ctx);
+  drawDuelDust(out, ctx);
+  if (p.dead) return;
   const dodge = arena.stockDodge(arena.bound), recovering = arena.isRecovering(arena.bound);
   const shield = arena.stockShield(arena.bound);
   const grab = arena.stockGrab(arena.bound);
