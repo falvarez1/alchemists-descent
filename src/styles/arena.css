@@ -27,7 +27,7 @@ body.versus-active #stock-match-hud { z-index: 61; }
 .stock-timer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); text-align: center; }
 
 /* ---------- the fighter cards ---------- */
-.stock-fighter { --seat: var(--d-amber); position: absolute; bottom: calc(var(--hu) * 1.6); left: calc(var(--hu) * 2.4); width: calc(var(--hu) * 25); }
+.stock-fighter { --seat: var(--d-amber); position: absolute; bottom: calc(var(--hu) * 1.6); left: calc(var(--hu) * 2.4); width: calc(var(--hu) * 27); }
 .stock-fighter-1 { --seat: var(--d-teal); left: auto; right: calc(var(--hu) * 2.4); }
 .stock-fighter[data-out="true"] { filter: saturate(.3) brightness(.7); }
 .stock-portrait-frame { position: relative; width: 100%; height: 100%; overflow: hidden; container-type: size; }

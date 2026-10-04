@@ -10,7 +10,7 @@ const PIECES = [
   'divider-line', 'divider-diamond', 'divider-cap-left', 'divider-cap-right', 'chain', 'lantern', 'lantern-glow', 'gear-small',
   'hanging-sign', 'banner-plate', 'band', 'word-fight', 'word-game', 'word-time', 'word-3', 'word-2', 'word-1',
   'bead', 'bead-spent', 'bead-teal', 'bead-teal-spent',
-  'list-row', 'list-row-hot', 'ribbon', 'nameplate', 'nameplate-hanging', 'hud-card', 'hud-card-teal', 'meter', 'meter-cell', 'meter-cell-teal',
+  'list-row', 'list-row-hot', 'ribbon', 'nameplate', 'nameplate-hanging', 'hud-card', 'hud-card-teal', 'meter', 'meter-cell', 'meter-cell-teal', 'meter-wide', 'meter-wide-cell', 'meter-wide-cell-teal',
 ] as const;
 
 const held: HTMLImageElement[] = [];

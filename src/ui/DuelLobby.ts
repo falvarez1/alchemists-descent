@@ -219,7 +219,8 @@ export class DuelLobby {
         seat = room?.seats[slot];
       if (!seat) continue;
       const def = FIGHTER_DEFS[seat.fighter];
-      showFighterArt(view.image, seat.fighter);
+      // a mirror match: P2's bust wears the fighter's second colourway
+      showFighterArt(view.image, seat.fighter, slot === 1 && room?.seats[0]?.fighter === seat.fighter);
       view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.name.style.setProperty('--name-len', String(view.name.textContent.length));
       view.title.textContent = duelTitle(seat.fighter);
       const index = FIGHTER_ORDER.indexOf(seat.fighter);

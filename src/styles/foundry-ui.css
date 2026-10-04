@@ -26,7 +26,7 @@
  *           .fk-hanging-nameplate (--lit) · .fk-hanging-sign · .fk-banner-plate
  *   type    .fk-heading-cast (--iron --ruled) · .fk-engraved · .fk-word (--fight --game --time --vs --1 --2 --3)
  *   marks   .fk-divider · .fk-or · .fk-medallion · .fk-seal (--teal) · .fk-bead (--teal) · .fk-arrow (--prev --next)
- *           .fk-meter (+ __cell)
+ *           .fk-meter (--wide; + __cell)
  *   inputs  .fk-toggle · .fk-checkbox · .fk-slider (input[type=range])
  * STATES  :hover / :focus-visible light a plate (hot); :active presses it. A seal, bead, toggle or tab is lit by
  *         [aria-pressed="true"], [aria-checked="true"], [aria-selected="true"], [data-on="true"] or :checked;
@@ -99,6 +99,9 @@
   --fk-img-meter: url('/assets/arena/ui/meter.png');
   --fk-img-meter-cell: url('/assets/arena/ui/meter-cell.png');
   --fk-img-meter-cell-teal: url('/assets/arena/ui/meter-cell-teal.png');
+  --fk-img-meter-wide: url('/assets/arena/ui/meter-wide.png');
+  --fk-img-meter-wide-cell: url('/assets/arena/ui/meter-wide-cell.png');
+  --fk-img-meter-wide-cell-teal: url('/assets/arena/ui/meter-wide-cell-teal.png');
   --fk-img-toggle: url('/assets/arena/ui/toggle.png');
   --fk-img-toggle-on: url('/assets/arena/ui/toggle-on.png');
   --fk-img-checkbox: url('/assets/arena/ui/checkbox.png');
@@ -420,6 +423,11 @@
 .fk-meter__cell::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--fk-fill, 0%); max-width: 100%; border-radius: 0; box-shadow: none; background: var(--fk-img-meter-cell-teal) 0 0 / calc(11 * var(--fk-b)) 100% no-repeat; }
 .fk-meter__cell[data-filled="true"] { background: var(--fk-img-meter-cell) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 0 calc(2 * var(--fk-b)) #f2b63088); }
 .fk-meter__cell[data-filled="true"]::after { content: none; }
+/* --wide: long bars (12 + 26n art px wide; cell k inside at 7 + 26k, 3 down, 24 x 9) */
+.fk-meter--wide { width: calc((12 + 26 * var(--fk-cells)) * var(--fk-b)); border-image-source: var(--fk-img-meter-wide); }
+.fk-meter--wide .fk-meter__cell { left: calc((7 + 26 * var(--fk-i)) * var(--fk-b)); width: calc(24 * var(--fk-b)); }
+.fk-meter--wide .fk-meter__cell::after { background-image: var(--fk-img-meter-wide-cell-teal); background-size: calc(24 * var(--fk-b)) 100%; }
+.fk-meter--wide .fk-meter__cell[data-filled="true"] { background-image: var(--fk-img-meter-wide-cell); }
 
 /* =========================== INPUTS =========================== */
 /* an on/off lever: a button with aria-pressed (or [data-on]) */

@@ -1,4 +1,5 @@
 import { FIGHTER_DEFS, fighterPortraitUrl, type FighterId } from '@/content/fighters';
+import { COSTUMES, recolorImageData } from '@/render/duel/costumes';
 
 /**
  * The Duel screens' words and small glyphs (docs/arena/platform-fighter/concepts/local-versus.png): the short name a
@@ -31,19 +32,63 @@ function bustAnchor(id: FighterId): Promise<BustAnchor | null> {
 }
 
 /**
+ * A mirror match's second colourway on a bust (P2's, when both seats hold the same fighter): the bust drawn to a canvas
+ * and recoloured by the fighter's costume rule (render/duel/costumes.ts, as the fighter is in the match; the 0.17 floor
+ * spares the bust's slate ground), kept as an object URL made once per fighter. Null when it cannot be made.
+ */
+const altBusts = new Map<FighterId, Promise<string | null>>();
+const altBustsReady = new Map<FighterId, string>();
+function altBustUrl(id: FighterId): Promise<string | null> {
+  let url = altBusts.get(id);
+  if (!url) {
+    url = new Promise<string | null>((resolve) => {
+      const source = new Image();
+      source.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
+          const g = canvas.getContext('2d', { willReadFrequently: true });
+          if (!g || !canvas.width || !canvas.height) { resolve(null); return; }
+          g.drawImage(source, 0, 0);
+          const pixels = g.getImageData(0, 0, canvas.width, canvas.height);
+          recolorImageData(pixels.data, COSTUMES[id], 0.17);
+          g.putImageData(pixels, 0, 0);
+          canvas.toBlob((blob) => {
+            const made = blob ? URL.createObjectURL(blob) : null;
+            if (made) altBustsReady.set(id, made);
+            resolve(made);
+          });
+        } catch { resolve(null); }
+      };
+      source.onerror = () => resolve(null);
+      source.src = duelBustUrl(id);
+    });
+    altBusts.set(id, url);
+  }
+  return url;
+}
+
+/**
  * Show a fighter's bust in `img`, falling back to the roster portrait when the bust is missing. `data-art` says which
  * one is showing ('bust' | 'portrait') so the styles can frame each (a full-body portrait needs a tighter crop). The
  * bust's face anchor lands on the img as --ex / --ey / --face, so every frame (lobby, HUD, results) places the face the
- * same way for all ten (versus.css `.bust-fit`).
+ * same way for all ten (versus.css `.bust-fit`). `alt` dresses it in the mirror match's second colourway (P2's when
+ * both seats hold the same fighter): `data-costume="alt"`, the recoloured bust as soon as it is made.
  */
-export function showFighterArt(img: HTMLImageElement, id: FighterId): void {
-  if (img.dataset.fighter === id) return;
-  img.dataset.fighter = id; img.dataset.art = 'bust';
+export function showFighterArt(img: HTMLImageElement, id: FighterId, alt = false): void {
+  const costume = alt ? 'alt' : '';
+  if (img.dataset.fighter === id && (img.dataset.costume ?? '') === costume) return;
+  const fresh = img.dataset.fighter !== id;
+  img.dataset.fighter = id; img.dataset.costume = costume; img.dataset.art = 'bust';
   img.onerror = () => {
     if (img.dataset.fighter !== id || img.dataset.art !== 'bust') return;
     img.dataset.art = 'portrait'; img.src = fighterPortraitUrl(id);
   };
-  img.src = duelBustUrl(id);
+  const ready = alt ? altBustsReady.get(id) : undefined;
+  // (the colourway the first time it is asked for: the bust as painted until the recolour is made, a frame or two)
+  if (ready) img.src = ready; else if (fresh || !alt) img.src = duelBustUrl(id);
+  if (alt && !ready) void altBustUrl(id).then(url => { if (url && img.dataset.fighter === id && img.dataset.costume === 'alt') img.src = url; });
+  if (!fresh) return;
   void bustAnchor(id).then(a => {
     if (!a || img.dataset.fighter !== id) return;
     img.style.setProperty('--ex', String(a.eye[0])); img.style.setProperty('--ey', String(a.eye[1])); img.style.setProperty('--face', String(a.face));

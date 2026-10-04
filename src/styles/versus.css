@@ -331,6 +331,8 @@ body.play-active #pause-overlay.duel-pause :is(#pause-resume, .pause-menu button
 #pause-overlay.duel-pause #pause-place { font: 800 calc(24px * var(--text-scale, 1))/1.05 var(--d-display); letter-spacing: .04em; text-transform: uppercase; color: var(--d-ivory); }
 #pause-overlay.duel-pause #pause-goal { font: 700 12px/1.4 var(--d-serif); letter-spacing: .14em; text-transform: uppercase; color: var(--d-paper); }
 #pause-overlay.duel-pause #pause-stats { font: 800 calc(15px * var(--text-scale, 1))/1.2 var(--d-display); letter-spacing: .05em; border-top-color: var(--d-copper-dim); }
+/* the stocks as the kit's beads */
+#pause-overlay.duel-pause .pause-beads { --fk-s: calc(var(--fk-px) * .75); display: inline-flex; gap: calc(2 * var(--fk-s)); margin-right: .45em; vertical-align: -.12em; }
 #pause-overlay.duel-pause #pause-stats dt[data-slot="0"], #pause-overlay.duel-pause #pause-stats dd[data-slot="0"] { color: var(--d-amber); }
 #pause-overlay.duel-pause #pause-stats dt[data-slot="1"], #pause-overlay.duel-pause #pause-stats dd[data-slot="1"] { color: var(--d-teal); }
 #pause-overlay.duel-pause .pause-status:not(.showing-controls) .pause-duel-controls { display: none; }

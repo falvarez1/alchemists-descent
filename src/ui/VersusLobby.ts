@@ -15,7 +15,7 @@ interface Cycler { root: HTMLElement; value: HTMLElement; prev: HTMLButtonElemen
 interface SeatView {
   card: HTMLElement; frame: HTMLElement; box: HTMLElement; image: HTMLImageElement; name: HTMLElement; title: HTMLElement; pips: HTMLElement[];
   fighter: Cycler; device: Cycler; difficulty: Cycler; icon: HTMLElement; ready: HTMLButtonElement;
-  shown: { fighter: string; ready: boolean };
+  shown: { fighter: string; ready: boolean; alt: boolean };
 }
 
 const deviceIcon = (device: VersusDevice): string => device === 'cpu' ? DUEL_ICON.cpu : device === 'keyboard' ? DUEL_ICON.keyboard : DUEL_ICON.controller;
@@ -118,7 +118,7 @@ export class VersusLobby {
       difficulty.root.dataset.row = 'difficulty'; difficulty.root.classList.add('versus-cpu'); difficulty.root.hidden = true;
       difficulty.root.title = 'Higher levels react faster and adapt more strongly to moves that work against you.';
       box.append(label, ready, device.root, difficulty.root); devices.append(box);
-      this.seats.push({ card, frame, box, image, name, title, pips, fighter, device, difficulty, icon, ready, shown: { fighter: '', ready: false } });
+      this.seats.push({ card, frame, box, image, name, title, pips, fighter, device, difficulty, icon, ready, shown: { fighter: '', ready: false, alt: false } });
     }
 
     this.start.type = 'button'; this.start.id = 'versus-start'; this.start.className = 'fk-button fk-button--primary'; this.start.textContent = 'Ready';
@@ -337,7 +337,8 @@ export class VersusLobby {
   private fillSplash(session: VersusApi): void {
     for (let slot = 0; slot < 2; slot++) {
       const side = this.splash.querySelector(`.versus-splash-${slot}`)!, id = session.seats[slot].fighter;
-      showFighterArt(side.querySelector('img')!, id);
+      // (a mirror match: P2 in the fighter's second colourway, as in the match)
+      showFighterArt(side.querySelector('img')!, id, slot === 1 && session.seats[0].fighter === id);
       side.querySelector('b')!.textContent = duelShortName(id); side.querySelector('small')!.textContent = duelTitle(id);
     }
     this.splash.querySelector('.versus-splash-stage')!.textContent = STOCK_STAGES[session.stage].name;
@@ -369,12 +370,16 @@ export class VersusLobby {
     const deviceKey = JSON.stringify([session.devices, session.seats.map(s => s.device)]);
     for (let slot = 0; slot < 2; slot++) {
       const seat = session.seats[slot], view = this.seats[slot], def = FIGHTER_DEFS[seat.fighter];
-      showFighterArt(view.image, seat.fighter);
+      // a mirror match: P2's bust wears the fighter's second colourway, the moment both seats hold the same fighter
+      const alt = slot === 1 && session.seats[0].fighter === seat.fighter;
+      showFighterArt(view.image, seat.fighter, alt);
       view.name.textContent = duelShortName(seat.fighter); view.name.title = def.name; view.name.style.setProperty('--name-len', String(view.name.textContent.length)); view.title.textContent = duelTitle(seat.fighter);
       view.fighter.root.dataset.value = seat.fighter;
       const index = FIGHTER_ORDER.indexOf(seat.fighter);
       view.pips.forEach((pip, i) => pip.classList.toggle('on', i === index));
       if (view.shown.fighter !== seat.fighter) this.fighterChanged(slot, seat.fighter, opening);
+      else if (alt && !view.shown.alt) pop(view.frame, [{ filter: 'brightness(2.4) saturate(1.5)' }, { filter: 'none' }], 320, 'ease-out');
+      view.shown.alt = alt;
       view.fighter.prev.disabled = view.fighter.next.disabled = loading;
       if (deviceKey !== this.deviceKey) {
         const choices = this.deviceChoices(session, slot);

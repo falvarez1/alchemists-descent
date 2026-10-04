@@ -240,7 +240,14 @@ export class PauseOverlay {
       const arena = ctx.arena;
       stats.replaceChildren(...ctx.arena.stockMatch.fighters.flatMap((fighter, slot) => {
         const dt = document.createElement('dt'), dd = document.createElement('dd'), id = arena.fighterId(slot);
-        dt.textContent = `P${slot + 1} ${id ? duelShortName(id) : ''}`; dd.textContent = `${'●'.repeat(fighter.stocks)}${'○'.repeat(Math.max(0, 3 - fighter.stocks))}  ${Math.round(fighter.volatility)}%`;
+        dt.textContent = `P${slot + 1} ${id ? duelShortName(id) : ''}`;
+        // the stocks as the foundry kit's beads (lit or spent, copper for P1 and teal for P2), then the percent
+        const beads = document.createElement('span'); beads.className = 'pause-beads'; beads.setAttribute('role', 'img');
+        beads.setAttribute('aria-label', `${fighter.stocks} stocks left`);
+        for (let i = 0; i < 3; i++) {
+          const bead = document.createElement('i'); bead.className = `fk-bead${slot ? ' fk-bead--teal' : ''}`; bead.dataset.on = String(i < fighter.stocks); beads.append(bead);
+        }
+        dd.append(beads, ` ${Math.round(fighter.volatility)}%`);
         dt.dataset.slot = dd.dataset.slot = String(slot);
         return [dt, dd];
       }));

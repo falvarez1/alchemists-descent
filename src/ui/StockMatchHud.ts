@@ -126,8 +126,8 @@ export class StockMatchHud {
       special.setAttribute('aria-label', `Player ${slot + 1} special charges`);
       label.className = 'stock-special-label'; label.textContent = 'Special'; specialHint.className = 'stock-special-hint';
       const cells = Array.from({ length: 2 }, () => { const cell = document.createElement('span'); cell.className = 'stock-special-cell fk-meter__cell'; cell.setAttribute('aria-hidden', 'true'); return cell; });
-      // the two charges sit in the kit's segmented meter housing (arena.css .stock-meter)
-      const meter = document.createElement('span'); meter.className = 'stock-meter fk-meter'; meter.append(...cells);
+      // the two charges are long bars in the kit's wide-cell meter (arena.css .stock-meter)
+      const meter = document.createElement('span'); meter.className = 'stock-meter fk-meter fk-meter--wide'; meter.append(...cells);
       special.append(label, meter, specialHint);
       // Shield, recovery burst, air dodge and ledge catch: four quiet glyphs, lit while ready.
       const defense = document.createElement('div'); defense.className = 'stock-defense'; defense.setAttribute('role', 'img');
@@ -176,7 +176,8 @@ export class StockMatchHud {
       const card = this.cards[slot], f = match.fighters[slot];
       const id = arena.fighterId(slot);
       if (card.portrait.hidden !== !id) card.portrait.hidden = !id;
-      if (id) showFighterArt(card.portrait, id);
+      // (a mirror match: P2 in the fighter's second colourway, as in the match)
+      if (id) showFighterArt(card.portrait, id, slot === 1 && arena.fighterId(0) === id);
       const name = id ? duelShortName(id) : slot === 0 ? 'Alchemist' : 'Add a rival';
       if (card.name.dataset.name !== name) { card.name.dataset.name = name; card.name.innerHTML = `<span class="stock-slot">P${slot + 1}</span>`; card.name.append(name); }
       const volatility = Math.round(f?.volatility ?? 0);
@@ -274,7 +275,7 @@ export class StockMatchHud {
     window.clearTimeout(this.cutinTimer);
     for (const a of this.cutin.getAnimations({ subtree: true })) a.cancel();
     this.cutin.dataset.slot = String(slot);
-    showFighterArt(this.cutinBust, fighter);
+    showFighterArt(this.cutinBust, fighter, slot === 1 && this.ctx.arena?.fighterId(0) === fighter);
     this.cutinName.textContent = name; this.cutinWho.textContent = duelShortName(fighter);
     this.cutin.hidden = false;
     const from = slot === 1 ? 1 : -1;
@@ -341,9 +342,10 @@ export class StockMatchHud {
     this.resultTagline.textContent = id ? DUEL_VICTORY[id].tagline : 'Neither fell further than the other.';
     const figure = document.createElement('figure'); figure.className = 'stock-result-portrait fk-slot';
     const portraits: FighterId[] = id ? [id] : ids.filter((f): f is FighterId => f !== null);
+    const mirror = ids[0] !== null && ids[0] === ids[1];
     portraits.forEach((f, i) => {
       const frame = document.createElement('span'); frame.className = `stock-result-bust stock-result-bust-${i}`;
-      const img = document.createElement('img'); img.className = 'bust-fit'; img.alt = FIGHTER_DEFS[f].name; showFighterArt(img, f);
+      const img = document.createElement('img'); img.className = 'bust-fit'; img.alt = FIGHTER_DEFS[f].name; showFighterArt(img, f, mirror && (id ? winner === 1 : i === 1));
       frame.append(img); figure.append(frame);
     });
     const stats = document.createElement('div'); stats.className = 'stock-result-stats fk-slot';

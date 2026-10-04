@@ -30,9 +30,11 @@ const click = async (page, locator, wait = 350) => {
 };
 const finish = (page) => page.evaluate(() => {
   const g = window.__game, c = g.ctx; c.state.paused = true;
-  // (a teleport during a respawn or a CPU recovery can be undone: try until the last stock is gone)
+  // (P2 dropped past the bottom blast line: a ring-out on the next step, which no recovery can undo; a teleport during a
+  // respawn is ignored, so try until the last stock is gone)
   for (let tries = 0; tries < 40 && c.arena.stockMatch.state !== 'finished'; tries++) {
-    Object.assign(c.arena.bundle(1).player, { x: c.arena.stockStage.zone.right - 140, vx: 0, grounded: false });
+    const zone = c.arena.stockStage.zone;
+    Object.assign(c.arena.bundle(1).player, { x: zone.right - 140, y: zone.bottom + 20, vx: 0, vy: 0, grounded: false });
     for (let tick = 0; tick < 140; tick++) g.tick(false, { forcePaused: true });
   }
   c.state.paused = false;
@@ -78,6 +80,25 @@ try {
     lobby.selects === 0 && ['Player 1 fighter', 'Player 1 device', 'Player 2 fighter', 'Player 2 device', 'Player 2 CPU difficulty'].every(n => lobby.cyclers.includes(n)), JSON.stringify(lobby.cyclers));
   check('one big READY under two seat cards, the keyboard\'s cursor on its own fighter, the stage backdrop behind',
     lobby.ready === 'Ready' && lobby.cards[0].startsWith('Player 1') && lobby.focus === 'Player 1 fighter' && !!lobby.backdrop, JSON.stringify(lobby));
+
+  // ---- every name on both nameplates, at four window sizes (the kit draws at 1, 2 and 3 art pixels): none clipped ----
+  const seatsBefore = await page.evaluate(() => window.__game.ctx.versus.seats.map(s => s.fighter));
+  const clipped = [];
+  for (const [width, height] of [[1280, 720], [1920, 1080], [800, 600], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    for (let i = 0; i < 10; i++) {
+      clipped.push(...await page.evaluate(async (i) => {
+        const v = window.__game.ctx.versus, order = ['ilyra-voss', 'brann-rook', 'sable-fen', 'mara-quell', 'kest-rel', 'nox-calder', 'edda-morrow', 'selene-wraith', 'rusk-emberjaw', 'father-thorne'];
+        v.chooseFighter(0, order[i]); v.chooseFighter(1, order[(i + 5) % 10]);
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return [...document.querySelectorAll('#versus-lobby .versus-seat h2')].filter(h => h.scrollWidth > h.clientWidth).map(h => `${innerWidth}x${innerHeight} ${h.textContent} ${h.scrollWidth}>${h.clientWidth}`);
+      }, i));
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate((seats) => { const v = window.__game.ctx.versus; seats.forEach((f, slot) => v.chooseFighter(slot, f)); }, seatsBefore);
+  await page.waitForTimeout(300);
+  check('every fighter\'s name fits both nameplates at 1280x720, 1920x1080, 800x600 and 390x844 (nothing clipped)', clipped.length === 0, clipped.slice(0, 6).join(' | '));
 
   // ---- the arrows: a click steps once, a held arrow keeps stepping ----
   const start0 = await fighterIndex(page, 0);
@@ -285,6 +306,37 @@ try {
   await click(page, '#pause-change-fighters', 600);
   const fromPause = await page.evaluate(() => ({ lobby: !document.querySelector('#versus-lobby').hidden, pause: document.querySelector('#pause-overlay.visible') !== null, paused: window.__game.ctx.state.paused }));
   check('the Duel pause\'s Change fighters goes back to the select screen', fromPause.lobby && !fromPause.pause, JSON.stringify(fromPause));
+
+  // ---- a mirror match: both seats on one fighter, P2 in the second colourway (render/duel/costumes.ts) on every bust ----
+  // (the share of a bust's pixels that differ between the two seats' images, compared as drawn, not as mirrored by CSS)
+  const busts = (a, b) => page.evaluate(([a, b]) => {
+    const x = document.querySelector(a), y = document.querySelector(b);
+    if (!x?.complete || !y?.complete || !x.naturalWidth || !y.naturalWidth) return { share: -1 };
+    const w = 64, c = document.createElement('canvas'); c.width = c.height = w;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(x, 0, 0, w, w); const p = g.getImageData(0, 0, w, w).data; g.clearRect(0, 0, w, w); g.drawImage(y, 0, 0, w, w); const q = g.getImageData(0, 0, w, w).data;
+    let n = 0; for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 40) n++;
+    return { share: +(n / (w * w)).toFixed(3), costumes: [x.dataset.costume, y.dataset.costume], fighters: [x.dataset.fighter, y.dataset.fighter] };
+  }, [a, b]);
+  const altLoaded = (sel) => page.waitForFunction((sel) => { const i = document.querySelector(sel); return i?.dataset.costume === 'alt' && i.src.startsWith('blob:') && i.complete && i.naturalWidth > 0; }, sel, { timeout: 10000 });
+  await page.evaluate(() => { const v = window.__game.ctx.versus; v.chooseFighter(0, 'ilyra-voss'); v.chooseFighter(1, 'ilyra-voss'); });
+  await altLoaded('#versus-lobby .versus-seat-1 .versus-portrait');
+  const mirrorLobby = await busts('#versus-lobby .versus-seat-0 .versus-portrait', '#versus-lobby .versus-seat-1 .versus-portrait');
+  await click(page, '#versus-start', 0);
+  await page.waitForFunction(() => window.__game.ctx.versus.phase === 'loading', null, { timeout: 5000 });
+  const mirrorCard = await page.evaluate(() => [...document.querySelectorAll('.versus-splash-side img')].map(i => i.dataset.costume ?? ''));
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__game.ctx.versus.phase === 'playing', null, { timeout: 20000 });
+  await altLoaded('.stock-fighter-1 .stock-portrait');
+  const mirrorHud = await busts('.stock-fighter-0 .stock-portrait', '.stock-fighter-1 .stock-portrait');
+  check('a mirror match dresses P2 in the second colourway: the lobby the moment both seats match, the VS card and the HUD (P2\'s bust pixels differ from P1\'s)',
+    mirrorLobby.share > .03 && mirrorLobby.costumes.join() === ',alt' && mirrorCard.join() === ',alt' && mirrorHud.share > .03 && mirrorHud.costumes.join() === ',alt',
+    JSON.stringify({ mirrorLobby, mirrorCard, mirrorHud }));
+  await page.waitForFunction(() => document.querySelector('.stock-message')?.hidden === true, null, { timeout: 20000 });
+  await page.keyboard.press('Escape');
+  await page.locator('#pause-overlay.visible').waitFor({ timeout: 5000 });
+  await click(page, '#pause-change-fighters', 600);
   await click(page, '.versus-back', 800);
   const title = await page.evaluate(() => ({ title: !document.querySelector('#expedition-entry')?.hidden, phase: window.__game.ctx.versus.phase, lobby: document.querySelector('#versus-lobby').hidden }));
   check('Back closes the Duel and shows the title', title.title && title.phase === 'idle' && title.lobby, JSON.stringify(title));
