@@ -81,6 +81,58 @@ and the decision log refer to it. Update the box in the same commit as the work.
 
 - [~] V7.1 the first full matchup matrix (45 pairs x both sides, bots level 3 and 5) and `docs/fighters/balance/baseline-<date>.json`
 - [ ] V7.2 `scripts/fight-tune.mjs` (interleaved A/B, a `balance-patch.json` with evidence, +-15% per round)
-- [ ] V7.3 the fight-review overlay in the Yard (timeline, ghosts, damage graph, heatmap)
+- [ ] V7.3 the fight-review overlay in the Yard (timeline, ghosts, damage graph, heatmap) (stock matches: BL5.2-5.3)
 - [ ] V7.4 balance passes until the targets hold; every pass writes `docs/fighters/balance/pass-NN.md`
-- [ ] V7.5 optional: a Node `HeadlessGame` for parallel bulk runs
+- [ ] V7.5 optional: a Node `HeadlessGame` for parallel bulk runs (BL7.1, after the split)
+
+## P8: the Balance Lab (`BALANCE-LAB.md`, `BALANCE-LAB-PLAN.md`)
+
+Milestones: M1 see and run (BL0, BL1), M2 edit safely (BL2, BL3, BL6.2), M3 new moves (BL4), M4 understand (BL5), M5 automate (BL6).
+
+- [ ] BL0.1 every knob registered at boot (`fighters/tuningRoots.ts`)
+- [ ] BL0.2 the analyser as a library (`tools/lab/analysis.mjs`; `duel-analyse` byte-identical)
+- [ ] BL0.3 stock-match determinism probe (`verify-duel-determinism.mjs`)
+- [ ] BL0.4 the balance store (`balance/`: contract, baseline, changelog, waivers)
+- [ ] BL1.1 frozen lab builds (content-hashed, immune to editing `src`)
+- [ ] BL1.2 the Lab server (Vite plugin: queue, runner pool, server-sent events, run store)
+- [ ] BL1.3 `/lab.html` route and shell (dev and authoring builds only)
+- [ ] BL1.4 Dashboard
+- [ ] BL1.5 Runs (launcher, queue, live partial standings)
+- [ ] BL1.6 Compare (A/B with significance)
+- [ ] BL2.1 fighter sheets (JSON) with the equivalence batch
+- [ ] BL2.2 kit numbers in the sheets (one kit per commit)
+- [ ] BL2.3 drafts, Apply and the balance changelog
+- [ ] BL2.4 the embedded game and its bridge
+- [ ] BL2.5 the roster grid with measured mobility
+- [ ] BL2.6 the sheet editor
+- [ ] BL3.1 move metrics and the KO calculator
+- [ ] BL3.2 cohorts, dominance and fighter indices
+- [ ] BL3.3 the combo finder and loop guard
+- [ ] BL3.4 the L0 and L1 gates (`tests/balance-static.test.ts`)
+- [ ] BL3.5 the power budget screen
+- [ ] BL4.1 `MoveSpec` v3, the v1 adapter and the schema
+- [ ] BL4.2 hitbox windows and per-move multipliers
+- [ ] BL4.3 directional inputs and slots (keyboard, pad, CPU hands)
+- [ ] BL4.4 cancels, chains and interruptibility
+- [ ] BL4.5 aerial landing lag and auto-cancel
+- [ ] BL4.6 armor, intangibility, motion, turnaround
+- [ ] BL4.7 charged smashes
+- [ ] BL4.8 move projectiles and command grabs
+- [ ] BL4.9 special skills as moves (`MoveScript`)
+- [ ] BL4.10 the CPU uses any move (coverage gate)
+- [ ] BL4.11 the Move Lab
+- [ ] BL4.12 art for new moves (dependency: `platform-fighter/SPRITES.md`)
+- [ ] BL5.1 run records v2
+- [ ] BL5.2 replay and seek
+- [ ] BL5.3 the fight timeline
+- [ ] BL5.4 the matchup explorer
+- [ ] BL6.1 sequential tests and Bradley-Terry
+- [ ] BL6.2 the gate evaluator, `balance:smoke` and `balance:full`
+- [ ] BL6.3 CI (pull-request smoke warning, nightly full matrix)
+- [ ] BL6.4 sensitivity sweeps
+- [ ] BL6.5 degenerate-strategy and loop detectors
+- [ ] BL6.6 identity fingerprints
+- [ ] BL6.7 promote to baseline
+- [ ] BL7.1 the headless kernel runner (after the split)
+- [ ] BL7.2 human match telemetry
+- [ ] BL7.3 a hosted Lab

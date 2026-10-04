@@ -109,7 +109,8 @@ What the runs taught:
 - **With equal levers, weight decided matches.** Heavy Rusk and Brann died around 130%, light floaty Mara around 64%. Rusk's
   finisher took 138 of the stocks he won in one round: he now hits a quarter softer and flies a third further.
 - **Win rate is steep in these multipliers**: about 3 points per 1% of strength (Mara 20% -> 83% for +20%, Rusk 87% -> 39% for
-  -16%), and Brann steeper still around 0.93 (a KO threshold). Hence the secant tuner and the noise band.
+  -16%, Brann 30% -> 87% for +18%). Hence the secant tuner and the noise band. (An early read of Brann as a cliff near
+  0.93 was seed noise: at 0.94 he measured 46-63% across five rounds.)
 - **Seeds alone move a fighter about 10 points** at 72 matches each (Mara 46% and 64% on two fresh seed sets with identical
   values). Pass 1 sits at that noise floor; tightening it further needs more seeds per round, not more rounds.
 - A personality is a playstyle, not a kit: these numbers are one profile on both sides. The Duel lobby plays each fighter with
