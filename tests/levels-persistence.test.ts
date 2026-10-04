@@ -139,14 +139,23 @@ describe('settled route repairs', () => {
     const repair = vi.fn(() => false);
     internals.currentId = 'd2'; internals.levels.set('d2', runtime);
     internals.repairFindability = repair;
-    /** Game ticks until the check in progress is done (each tick is one slice). */
-    const tickAudit = (): void => { for (let i = 0; i < 100_000 && internals.settledAudit; i++) levels.update(ctx); };
+    /** Game ticks until no check is in progress (each tick is one slice; a tick also starts any check whose
+     *  step deadline has passed). Returns how many distinct checks it saw. */
+    const tickAudit = (): number => {
+      let seen = 0;
+      let last: object | null = null;
+      for (let i = 0; i < 100_000 && internals.settledAudit; i++) {
+        if (internals.settledAudit !== last) { seen++; last = internals.settledAudit; }
+        levels.update(ctx);
+      }
+      return seen;
+    };
     /** Advance the clock, finishing every check that starts on the way. Returns how many ran. */
     const advance = (ms: number): number => {
       let ran = 0;
       for (let left = ms; left > 0; left -= 100) {
         vi.advanceTimersByTime(Math.min(100, left));
-        if (internals.settledAudit) { ran++; tickAudit(); }
+        ran += tickAudit();
       }
       return ran;
     };
@@ -163,7 +172,7 @@ describe('settled route repairs', () => {
       expect(repair).not.toHaveBeenCalled();
       expect(levels.findabilityReady).toBe(false);
       runtime.world.activity.stepSerial = 18;
-      expect(advance(100)).toBe(1);
+      expect(advance(300)).toBe(1);
       // The sealed waystone is an error verdict, so the synchronous repair is handed over to.
       expect(repair).toHaveBeenCalledTimes(1);
       expect(advance(7000)).toBe(0);
@@ -176,11 +185,21 @@ describe('settled route repairs', () => {
       expect(advance(7000)).toBe(2);
       expect(repair).toHaveBeenCalledTimes(7);
       expect(levels.findabilityReady).toBe(true);
+      // The LATE checks keep watching a settled floor on the same step clock (a seam drains for minutes).
+      expect(advance(7000)).toBe(0);
+      runtime.world.activity.stepSerial = 1080;
+      expect(advance(7000)).toBe(1);
+      expect(repair).toHaveBeenCalledTimes(8);
+      runtime.world.activity.stepSerial = 10800;
+      expect(advance(7000)).toBe(7);
+      expect(repair).toHaveBeenCalledTimes(15);
+      runtime.world.activity.stepSerial = 99999;
+      expect(advance(7000)).toBe(0); // the schedule is over
       internals.scheduleSettledFindabilityRepair(ctx, runtime);
       levels.dispose();
       runtime.world.activity.stepSerial += 720;
       expect(advance(7000)).toBe(0);
-      expect(repair).toHaveBeenCalledTimes(7);
+      expect(repair).toHaveBeenCalledTimes(15);
     } finally { levels.dispose(); vi.useRealTimers(); }
   });
 
@@ -194,6 +213,27 @@ describe('settled route repairs', () => {
       runtime.world.activity.stepSerial = 720;
       expect(advance(20000)).toBe(7);
       expect(repair).not.toHaveBeenCalled();
+      expect(levels.findabilityReady).toBe(true);
+    } finally { levels.dispose(); vi.useRealTimers(); }
+  });
+
+  it('starts each check on the tick its step deadline is reached, not on the wall clock', () => {
+    // Manual stepping and slow runners run ticks faster or slower than real time: the checks must audit the same
+    // material steps either way, so no timer may have to fire for a due check to start.
+    vi.useFakeTimers();
+    const runtime = sealedFloor(); // the sealed waystone: every check ends in the (spied) repair
+    const { ctx, levels, internals, repair } = harness(runtime);
+    try {
+      internals.scheduleSettledFindabilityRepair(ctx, runtime);
+      const checkedAt: number[] = [];
+      for (let step = 0; step <= 1100; step++) {
+        runtime.world.activity.stepSerial = step;
+        const before = repair.mock.calls.length;
+        levels.update(ctx); // one game tick: start a due check, then slice it
+        for (let i = 0; i < 100_000 && internals.settledAudit; i++) levels.update(ctx);
+        if (repair.mock.calls.length > before) checkedAt.push(step);
+      }
+      expect(checkedAt).toEqual([18, 96, 174, 264, 390, 540, 720, 1080]);
       expect(levels.findabilityReady).toBe(true);
     } finally { levels.dispose(); vi.useRealTimers(); }
   });

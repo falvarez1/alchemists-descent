@@ -138,6 +138,15 @@ const CURTAIN_HOLD_MS = 450;
 // The last two checks cover distant powder at 15 Hz. In d6 seed 1 its portal
 // approach was still receiving falling grains after 445 full material steps.
 const SETTLED_FINDABILITY_REPAIR_DELAYS_MS = [300, 1600, 2900, 4400, 6500, 9000, 12000];
+/** LATE checks, after the level already counts as settled (findabilityReady). Entry settling is NOT over at
+ *  12 s: an exposed powder seam drains grain by grain for minutes (seed 5, real time: d4's boss approach was
+ *  plugged by a gunpowder heap at ~33 s and d3b's charge latch buried at ~40 s, both for good, 2/2 and 3/3
+ *  runs; d2 and d4 were still moving 150-300 blocking cells per 10 s at two minutes). Same rule as the entry
+ *  checks: a check only carves when it finds an error, and a still floor ends after the hash. */
+const SETTLED_FINDABILITY_LATE_DELAYS_MS = [18000, 26000, 36000, 48000, 64000, 90000, 120000, 180000];
+const SETTLED_FINDABILITY_SCHEDULE_MS = [...SETTLED_FINDABILITY_REPAIR_DELAYS_MS, ...SETTLED_FINDABILITY_LATE_DELAYS_MS];
+/** Fallback poll for the step deadlines when update() is not ticking (a debug freeze). */
+const SETTLED_FINDABILITY_POLL_MS = 250;
 /** Each check is built a slice a frame (world/findabilityAudit) instead of as one 50-170 ms freeze:
  *  3 ms a frame, 1 ms while he is casting or something hostile is close. */
 const SETTLED_AUDIT_BUDGET_MS = 3;
@@ -715,6 +724,8 @@ export class Levels implements LevelsApi {
   /** Guards delayed settled-findability repair against stale level transitions. */
   private findabilityRepairToken = 0;
   private settledFindabilityTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Starts the next settled check once its sim-step deadline is reached (called every tick by update). */
+  private settledPump: (() => void) | null = null;
   private settlingRuntime: LevelRuntime | null = null;
   /** The check in progress (sliced by update) and its working planes. */
   private settledAudit: { audit: FindabilityAudit; runtime: LevelRuntime; token: number; done: (result: AuditResult | null) => void } | null = null;
@@ -743,6 +754,7 @@ export class Levels implements LevelsApi {
       clearTimeout(this.settledFindabilityTimer);
       this.settledFindabilityTimer = null;
     }
+    this.settledPump = null;
     this.dropSettledAudit();
     this.findabilityRepairToken++;
   }
@@ -1000,6 +1012,7 @@ export class Levels implements LevelsApi {
    * explored-mask stamping, hostile-count events.
    */
   update(ctx: Ctx): void {
+    this.settledPump?.();
     this.advanceSettledAudit(ctx);
     if (ctx.state.mode !== 'play' || this._transitioning || ctx.player.dead) return;
     const runtime = this.current;
@@ -2852,18 +2865,25 @@ export class Levels implements LevelsApi {
     // The fingerprint of the last check that found nothing wrong: a check whose inputs still match it ends
     // after the hash (a still floor costs ~2 ms, not ~90).
     let lastCleanPrint: string | null = null;
-    const runStep = (step: number): void => {
-      if (this.settledFindabilityTimer !== null) this.settledFindabilityTimer = null;
-      if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) return;
-      const requiredSteps = Math.round(SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step] * 60 / 1000);
-      if (runtime.world.activity.stepSerial - startedStep < requiredSteps) {
-        this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(step), 100);
-        return;
+    let step = 0;
+    const stop = (): void => {
+      if (this.settledPump === pump) this.settledPump = null;
+      if (this.settledFindabilityTimer !== null) {
+        clearTimeout(this.settledFindabilityTimer);
+        this.settledFindabilityTimer = null;
       }
+    };
+    // Each check starts on the TICK its sim-step deadline is reached (update() pumps this every tick), never on
+    // the wall clock: the schedule is in material steps, so a machine that runs ticks faster or slower than
+    // real time (manual stepping, a GPU-less runner) still audits the very same moments of the settling.
+    const pump = (): void => {
+      if (token !== this.findabilityRepairToken || this.currentId !== id || this.current !== runtime) { stop(); return; }
+      if (this.settledAudit !== null || step >= SETTLED_FINDABILITY_SCHEDULE_MS.length) return;
+      const requiredSteps = Math.round(SETTLED_FINDABILITY_SCHEDULE_MS[step] * 60 / 1000);
+      if (runtime.world.activity.stepSerial - startedStep < requiredSteps) return;
       // Liquid that ran into Pell's camp while the floor settled drains downhill too.
       const camp = runtime.story?.camp;
       if (camp) this.drainCamp(ctx, runtime, camp);
-      const startedAt = performance.now();
       const finish = (result: AuditResult | null): void => {
         if (token !== this.findabilityRepairToken || this.current !== runtime) return;
         // The audit only DETECTS (on a snapshot of the grid). An error hands over to the synchronous repair, which
@@ -2874,13 +2894,11 @@ export class Levels implements LevelsApi {
         if (dirty && this.repairFindability(ctx, runtime, 'settled') && this.checkpointSaveSuppression === 0) {
           this.saveExpedition(ctx);
         }
-        const next = step + 1;
-        if (next < SETTLED_FINDABILITY_REPAIR_DELAYS_MS.length) {
-          // The schedule is kept against the clock: a check that took a second to slice leaves that much less to wait.
-          const wait = SETTLED_FINDABILITY_REPAIR_DELAYS_MS[next] - SETTLED_FINDABILITY_REPAIR_DELAYS_MS[step] - (performance.now() - startedAt);
-          this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(next), Math.max(0, wait));
-        } else {
-          this.settlingRuntime = null;
+        step++;
+        // The entry checks are done: the level counts as settled for whoever waits on it (probes, travel).
+        if (step === SETTLED_FINDABILITY_REPAIR_DELAYS_MS.length && this.settlingRuntime === runtime) this.settlingRuntime = null;
+        if (step >= SETTLED_FINDABILITY_SCHEDULE_MS.length) {
+          stop();
           this.dropSettledAudit();
         }
       };
@@ -2895,7 +2913,15 @@ export class Levels implements LevelsApi {
         pending?.done(null);
       }, SETTLED_AUDIT_GUARD_MS);
     };
-    this.settledFindabilityTimer = globalThis.setTimeout(() => runStep(0), SETTLED_FINDABILITY_REPAIR_DELAYS_MS[0]);
+    this.settledPump = pump;
+    // Fail-open driver for when update() is not ticking (debug freeze): the same deadline check, on a slow poll.
+    const poll = (): void => {
+      this.settledFindabilityTimer = null;
+      if (this.settledPump !== pump) return;
+      pump();
+      if (this.settledPump === pump) this.settledFindabilityTimer = globalThis.setTimeout(poll, SETTLED_FINDABILITY_POLL_MS);
+    };
+    this.settledFindabilityTimer = globalThis.setTimeout(poll, SETTLED_FINDABILITY_POLL_MS);
   }
 
   /** One slice of the settled check per game tick (a few ms; see world/findabilityAudit). */
