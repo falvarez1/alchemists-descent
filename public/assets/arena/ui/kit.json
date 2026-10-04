@@ -723,6 +723,64 @@
     48
    ]
   },
+  "meter-wide": {
+   "file": "meter-wide.png",
+   "size": [
+    38,
+    15
+   ],
+   "kind": "plate",
+   "slice": [
+    5,
+    6,
+    5,
+    6
+   ],
+   "fill": true,
+   "repeat": "round stretch",
+   "period": [
+    26,
+    null
+   ],
+   "states": {
+    "normal": "meter-wide.png"
+   },
+   "fixed": "height: show it size[1] x scale tall",
+   "use": "segmented meter housing with long cells, one per period: width = 12 + 26n art px; cell k inside at left 7 + 26k, top 3 (24 x 9)",
+   "scale": 2,
+   "css": [
+    76,
+    30
+   ]
+  },
+  "meter-wide-cell": {
+   "file": "meter-wide-cell.png",
+   "size": [
+    24,
+    9
+   ],
+   "kind": "image",
+   "use": "long meter cell fill, gold",
+   "scale": 2,
+   "css": [
+    48,
+    18
+   ]
+  },
+  "meter-wide-cell-teal": {
+   "file": "meter-wide-cell-teal.png",
+   "size": [
+    24,
+    9
+   ],
+   "kind": "image",
+   "use": "long meter cell fill, teal (refilling)",
+   "scale": 2,
+   "css": [
+    48,
+    18
+   ]
+  },
   "divider": {
    "file": "divider.png",
    "size": [

@@ -12,7 +12,7 @@ The targets are the approved screens in `alchemists-descent-worktrees/UI/V1/` (t
 files): results, HUD, pause, lobby and connect. The `Screenshot*.png` files in that folder show the old UI being
 replaced.
 
-- **Pieces:** `public/assets/arena/ui/*.png` (64 pieces, 77 files with their states, about 375 KB), indexed by
+- **Pieces:** `public/assets/arena/ui/*.png` (67 pieces, 79 PNGs with their states, about 380 KB), indexed by
   `public/assets/arena/ui/kit.json`.
 - **Sources:** `docs/arena/platform-fighter/ui-sources/*.webp`, the ten generated sheets (lossy WebP, q92).
 - **Build:** `node scripts/arena-sprites/build-ui-kit.mjs` cuts every piece from the sources and writes the PNGs and
@@ -62,8 +62,8 @@ losslessly, and lossy compression smears the pixels.
 | Kind | Pieces |
 |---|---|
 | frame (hollow 9-slice, transparent centre, fill behind) | `panel-large` (menus, lobby, pause, results, connect, options), `panel-small` (dialogs, confirmations, sub-panels), `card` and `card-teal` (seats, info boxes; teal is the second player), `slot` (text fields, value boxes, status and rules bars), `picture-frame` (stage, level or save tiles; its bottom 34 px are the caption plate) |
-| plate (filled 9-slice) | `button-primary` and `button-secondary` (each normal / hot / pressed), `list-row` (normal / hot: the menu cursor), `tab` (normal / active), `title-plate`, `ribbon`, `nameplate`, `nameplate-hanging`, `tooltip` (stretches both ways), `keycap`, `band`, `hud-card` and `hud-card-teal`, `meter`, `slider-track`, `slider-fill`, `scroll-track` (vertical) |
-| image | `slider-handle`, `scroll-thumb` (normal / hot); `toggle`, `checkbox` (off / on); `meter-cell`, `meter-cell-teal`; `keycap-square`; `arrow-left` / `arrow-right` (normal / hot: the value cycler); `gear-small`; `gear-crest`; `medallion`; `seal`, `seal-teal`; `bead`, `bead-spent`, `bead-teal`, `bead-teal-spent`; `hanging-sign`; `banner-plate`; `chain-mount`; `lantern` (lit / unlit / glow); `divider` (whole) and its parts `divider-cap-left`, `divider-diamond`, `divider-cap-right` |
+| plate (filled 9-slice) | `button-primary` and `button-secondary` (each normal / hot / pressed), `list-row` (normal / hot: the menu cursor), `tab` (normal / active), `title-plate`, `ribbon`, `nameplate`, `nameplate-hanging`, `tooltip` (stretches both ways), `keycap`, `band`, `hud-card` and `hud-card-teal`, `meter` and `meter-wide`, `slider-track`, `slider-fill`, `scroll-track` (vertical) |
+| image | `slider-handle`, `scroll-thumb` (normal / hot); `toggle`, `checkbox` (off / on); `meter-cell`, `meter-cell-teal`, `meter-wide-cell`, `meter-wide-cell-teal`; `keycap-square`; `arrow-left` / `arrow-right` (normal / hot: the value cycler); `gear-small`; `gear-crest`; `medallion`; `seal`, `seal-teal`; `bead`, `bead-spent`, `bead-teal`, `bead-teal-spent`; `hanging-sign`; `banner-plate`; `chain-mount`; `lantern` (lit / unlit / glow); `divider` (whole) and its parts `divider-cap-left`, `divider-diamond`, `divider-cap-right` |
 | tile | `divider-line` (repeat-x), `chain` (repeat-y), `fill-iron` (panel interiors), `fill-worn` (lighter, for slots) |
 | texture | `text-copper`, `text-iron` (for `background-clip: text`) |
 | word | `word-fight`, `word-game`, `word-time`, `word-vs`, `word-3`, `word-2`, `word-1` |
@@ -134,6 +134,10 @@ it is dragged.
 is at left 7 + 13k and top 3, and is 11 x 9. Put a `meter-cell` (gold) or `meter-cell-teal` image there for each
 filled or refilling cell; an empty cell shows the dark housing.
 
+`meter-wide` is the same housing with long cells, like the gold bars of the HUD target. Its width is 12 + 26n art px, and
+cell k's inside is at left 7 + 26k and top 3, and is 24 x 9. Fill it with `meter-wide-cell` (gold) or `meter-wide-cell-teal`.
+Both meters' geometry is also in their kit.json `use` text.
+
 **HUD card.** A `hud-card` plate, 168px tall: the portrait window sits in the 82-art-px end slice, and the body
 stretches. Put the portrait in a sibling element behind the card (`z-index: -1` inside an `isolation: isolate`
 wrapper). Size and position it to `window`, with `background-size: cover`. For example, `left: 30px; top: 30px;
@@ -186,6 +190,10 @@ foot), so `auto 100%` fits one gradient to the line box. Small labels and body t
      display scale.
    - Pieces that must fit together are cut to each other's measured insides. The slider fill is cut to the groove's
      7 art px. The meter's cell fills are cut to a cell's 11 x 9. A toggle's two states share one size.
+   - The wide-cell meter is derived without a generation. Each cell's inside is widened from 11 to 24 art px by
+     ping-ponging its flat middle columns; turning on its shaded edge columns would draw a line. The long cell fills are
+     widened in the source sheet, at the square cell's source pixels per art pixel, and then cut like any piece. At
+     source resolution the mirroring is finer than an art pixel, so it does not read as a pattern.
    - Alpha is made crisp (coverage >= 0.5), and colours are snapped to the piece's own k-means palette (40 colours).
 4. **Regularise the 9-slices** (`regularise`).
    - The corners are kept exactly as drawn.

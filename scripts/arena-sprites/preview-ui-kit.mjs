@@ -72,7 +72,6 @@ ${Object.keys(P).filter(n => P[n].kind === 'plate').map(plateCss).join('\n')}
 .slider > .slider-track { width: 100%; }
 .slider > .slider-fill { position: absolute; left: ${px(8)}; top: ${px(4)}; }
 .slider > img { position: absolute; top: ${px((P['slider-track'].size[1] - P['slider-handle'].size[1]) / 2)}; }
-.meter > img { position: absolute; top: ${px(3 - 5)}; }
 </style></head><body>
 <section id="controls"><h2>Controls: an options panel built from the kit, then each control's states and stretch</h2>
 <div class="row" style="align-items:flex-start">
@@ -123,27 +122,33 @@ ${Object.keys(P).filter(n => P[n].kind === 'plate').map(plateCss).join('\n')}
 </section>
 <section id="hud"><h2>HUD and plates: player cards (portrait behind the window), meter, nameplates, hanging sign, ribbon</h2>
 ${(() => {
-  const meter = cells => `<div class="meter rel" style="width:${px(12 + 13 * cells.length)}">${cells.map((c, k) => c ? imgFile(`meter-cell${c === 'teal' ? '-teal' : ''}.png`, 11, `left:${px(1 + 13 * k)}`) : '').join('')}</div>`;
+  // A meter of cells ('gold', 'teal' or null), square or wide: its period and cell geometry come from kit.json.
+  const meter = (cells, wide = false) => {
+    const m = P[wide ? 'meter-wide' : 'meter'], per = m.period[0], cap = m.size[0] - per, cell = wide ? 'meter-wide-cell' : 'meter-cell';
+    const [cx, cy] = m.use.match(/left (\d+) \+ \d+k, top (\d+)/).slice(1).map(Number), [, , , l] = m.slice, [t] = m.slice;
+    return `<div class="${m.file.replace('.png', '')} rel" style="width:${px(cap + per * cells.length)}">${cells.map((c, k) => c ? imgFile(`${cell}${c === 'teal' ? '-teal' : ''}.png`, P[cell].size[0], `position:absolute;left:${px(cx - l + per * k)};top:${px(cy - t)}`) : '').join('')}</div>`;
+  };
   const beads = (b, n) => Array.from({ length: 3 }, (_, k) => img(k < n ? b : b + '-spent')).join('');
   const card = (name, bust, who, color, beadRow, pct, cells) => {
     const wnd = P[name].window, side = wnd.left !== undefined ? `left:${px(wnd.left)}` : `right:${px(wnd.right)}`;
-    return `<div class="rel" style="isolation:isolate;width:${px(220)}">
+    return `<div class="rel" style="isolation:isolate;width:${px(250)}">
       <div class="abs" style="${side};top:${px(wnd.top)};width:${px(wnd.width)};height:${px(wnd.height)};z-index:-1;background:#0d1117 url(/assets/arena/fighters/${bust}/bust.webp) center 15% / cover"></div>
       <div class="${name}" style="width:100%;flex-direction:column;align-items:stretch;justify-content:space-between;padding:0 ${px(4)}">
         <span class="small" style="color:${color}">${who}</span>
         <div style="display:flex;align-items:center;justify-content:space-between"><div class="row" style="gap:${px(2)}">${beadRow}</div><span class="copper-text" style="font:700 ${20 * S}px/1 Georgia,serif">${pct}</span></div>
-        <div style="display:flex;align-items:center;gap:${px(4)}"><span class="small" style="font-size:11px">SPECIAL</span>${meter(cells)}</div>
+        <div style="display:flex;align-items:center;gap:${px(4)}"><span class="small" style="font-size:11px">SPECIAL</span>${meter(cells, true)}</div>
       </div></div>`;
   };
   return `<div class="row">${card('hud-card', 'nox-calder', 'P1 NOX', '#f2b35e', beads('bead', 3), '0%', ['gold', 'gold', null])}
     ${card('hud-card-teal', 'brann-rook', 'P2 BRANN', '#6fd6d0', beads('bead-teal', 2), '47%', ['gold', 'teal', null])}</div>
   <div class="row" style="margin-top:16px;align-items:center">${[1, 3, 6].map(n => meter(Array.from({ length: n }, (_, k) => k < n - 1 ? 'gold' : null))).join('')}
+    ${[1, 3, 4].map(n => meter(Array.from({ length: n }, (_, k) => k < n - 2 ? 'gold' : k === n - 2 ? 'teal' : null), true)).join('')}
     ${[110, 160, 260].map(w => `<div class="hud-card" style="width:${px(w)}"></div>`).join('')}</div>
-  <div class="label">meter with 1, 3 and 6 cells (width 12 + 13n); the card body at three widths</div>`;
+  <div class="label">meter with 1, 3 and 6 cells (width 12 + 13n), wide meter with 1, 3 and 4 cells (width 12 + 26n); the card body at three widths</div>`;
 })()}
 <div class="row" style="margin-top:24px;align-items:flex-end">
   <div class="nameplate" style="width:${px(100)};flex-direction:column"><span class="copper-text" style="font:700 ${12 * S}px/1 Georgia,serif">NOX</span><span class="small" style="font-size:11px">LAMPBLACK</span></div>
-  <div class="row" style="gap:0;align-items:flex-end">${img('lantern', 'margin-right:-4px')}<div class="nameplate-hanging" style="width:${px(130)};align-items:flex-end"><span class="btn-text" style="font-size:17px;padding-bottom:2px">P1 · PRESS ENTER</span></div>${img('lantern', 'margin-left:-4px')}</div>
+  <div class="row" style="gap:0;align-items:flex-end">${img('lantern', 'margin-right:-4px')}<div class="nameplate-hanging" style="width:${px(160)};align-items:flex-end"><span class="btn-text" style="font-size:17px;padding-bottom:2px">P1 · PRESS ENTER</span></div>${img('lantern', 'margin-left:-4px')}</div>
   <div style="text-align:center"><div><span class="copper-text" style="font:700 ${26 * S}px/1 Georgia,serif">CONNECT</span></div>
     <div class="ribbon" style="width:${px(210)}"><span class="small">SAME NETWORK. SAME SERVER.</span></div></div>
 </div>

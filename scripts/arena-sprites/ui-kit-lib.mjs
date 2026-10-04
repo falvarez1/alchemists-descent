@@ -347,3 +347,35 @@ export function holeRect(img) {
   }
   return x1 < 0 ? null : [x0, y0, x1, y1];
 }
+
+// Widen a piece by replacing its columns lo..hi (inclusive) with a run of `width` columns that ping-pong across them
+// (lo, lo+1 .. hi, hi-1 .. lo+1, lo ..): no seam anywhere, and the ends of the run keep their neighbours.
+export function widenColumns(img, lo, hi, width) {
+  const src = [];
+  for (let k = 0, x = lo, d = 1; k < width; k++) {
+    src.push(x);
+    if (lo === hi) continue;
+    if (x + d > hi || x + d < lo) d = -d;
+    x += d;
+  }
+  const cols = [...Array(lo).keys(), ...src, ...Array.from({ length: img.w - hi - 1 }, (_, k) => hi + 1 + k)];
+  const out = Buffer.alloc(cols.length * img.h * 4);
+  for (let y = 0; y < img.h; y++) cols.forEach((sx, x) => img.data.copy(out, (x + y * cols.length) * 4, (sx + y * img.w) * 4, (sx + y * img.w) * 4 + 4));
+  return { data: out, w: cols.length, h: img.h };
+}
+
+// The part of a sheet inside rect [x0, y0, x1, y1], as a sheet of its own, with its columns lo..hi (relative to the rect)
+// ping-ponged out to `width` columns (see widenColumns). Widening at the source's resolution and then cutting keeps
+// the mirroring finer than an art pixel, so it does not show as a pattern.
+export function widenSheet(sheet, [x0, y0, x1, y1], lo, hi, width) {
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, data = Buffer.alloc(w * h * 4), key = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = x0 + x + (y0 + y) * sheet.W;
+    sheet.data.copy(data, (x + y * w) * 4, i * 4, i * 4 + 4);
+    key[x + y * w] = sheet.key[i];
+  }
+  const keyImg = { data: Buffer.from(key.buffer), w, h };
+  const keyed = widenColumns(keyImg, lo, hi, width);
+  const wide = widenColumns({ data, w, h }, lo, hi, width);
+  return { data: wide.data, W: wide.w, H: h, key: new Float32Array(keyed.data.buffer, keyed.data.byteOffset, wide.w * h) };
+}

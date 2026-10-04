@@ -9,7 +9,7 @@
 // Usage: node scripts/arena-sprites/build-ui-kit.mjs [--raw <dir>]   (--raw: only the plain cuts, to choose slices)
 import { mkdirSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadSheet, tightRect, cutPiece, regularise, seamlessTile, crop, savePng, periodicStrip, columnHeights, difference, lift, flatten, transpose, holeRect } from './ui-kit-lib.mjs';
+import { loadSheet, tightRect, cutPiece, regularise, seamlessTile, crop, savePng, periodicStrip, columnHeights, difference, lift, flatten, transpose, holeRect, widenColumns, widenSheet } from './ui-kit-lib.mjs';
 
 const SRC = 'docs/arena/platform-fighter/ui-sources', OUT = 'public/assets/arena/ui', SCALE = 2;
 const args = process.argv.slice(2);
@@ -173,6 +173,38 @@ for (const [name, p] of Object.entries(PLATES)) {
     fixed: p.both ? null : p.vertical ? 'width: show it size[0] x scale wide' : 'height: show it size[1] x scale tall', use: p.use,
     _img: first,
   };
+}
+
+// The wide-cell meter (long bars, as in the HUD target), derived from the meter at no generation: each cell's inside
+// widens from its drawn width to WIDE_CELL art px by ping-ponging its middle columns, and the cell fills the same way.
+{
+  const WIDE_CELL = 24;
+  const m = kit.pieces.meter, img = m._img, [, , , l] = m.slice, y = img.h >> 1;
+  const lumAt = (x, yy) => { const i = (x + yy * img.w) * 4; return img.data[i] * 0.3 + img.data[i + 1] * 0.59 + img.data[i + 2] * 0.11; };
+  const lum = x => lumAt(x, y);
+  // A cell's inside: the dark run between the two ribs of the first period.
+  let x0 = l; while (x0 < l + m.period[0] && lum(x0) >= 45) x0++;
+  let x1 = x0; while (x1 + 1 < l + m.period[0] && lum(x1 + 1) < 45) x1++;
+  const inner = x1 - x0 + 1, period = m.period[0] - inner + WIDE_CELL, cellH = cuts['meter-cell'].h;
+  const cx = (x0 + x1) >> 1, opaque = yy => img.data[(cx + yy * img.w) * 4 + 3] >= 128;
+  let top = 0; while (top < img.h && (!opaque(top) || lumAt(cx, top) >= 45)) top++;
+  // Keep the inside's two shaded columns at each end (turning on one would draw a line), ping-pong the flat middle.
+  const wide = widenColumns(img, x0 + 2, x1 - 2, WIDE_CELL - 4);
+  await savePng(wide, join(OUT, 'meter-wide.png'));
+  kit.pieces['meter-wide'] = {
+    file: 'meter-wide.png', size: [wide.w, wide.h], kind: 'plate', slice: m.slice, fill: true, repeat: 'round stretch',
+    period: [period, null], states: { normal: 'meter-wide.png' }, fixed: m.fixed,
+    use: `segmented meter housing with long cells, one per period: width = ${wide.w - period} + ${period}n art px; cell k inside at left ${x0} + ${period}k, top ${top} (${WIDE_CELL} x ${cellH})`,
+  };
+  for (const [name, from] of [['meter-wide-cell', 'meter-cell'], ['meter-wide-cell-teal', 'meter-cell-teal']]) {
+    // The fill is widened in the source, at the same source pixels per art pixel as the square cell: its rim (two art
+    // columns) and glow fade (one more) stay at each end, the middle ping-pongs, then it is cut like any piece.
+    const p = PIECES[from], sh = await sheet(p.sheet), rect = tightRect(sh, p.rect), sw = rect[2] - rect[0] + 1;
+    const perArt = sw / p.size[0], keep = Math.round(3 * perArt), width = Math.round(WIDE_CELL * perArt) - 2 * keep;
+    const wideSheet = widenSheet(sh, rect, keep, sw - 1 - keep, width);
+    const cell = cutPiece(wideSheet, [0, 0, wideSheet.W - 1, wideSheet.H - 1], { size: [WIDE_CELL, p.size[1]] });
+    await put(name, cell, { kind: 'image', use: `long meter cell fill, ${from.endsWith('teal') ? 'teal (refilling)' : 'gold'}` });
+  }
 }
 
 // The HUD cards' portrait windows, measured from the art, from the end the window sits at (it stays fixed there).
