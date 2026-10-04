@@ -152,49 +152,67 @@ try {
           // runner renders a few a second: drive it with the game's manual time
           // (up to 60 queued ticks a frame) until `done()`, then hand time back.
           // The same simulation — just not throttled by the renderer.
-          const driveSim = async (done, capMs = 180000) => {
+          // Exact tick counts (a frame runs up to 60 queued ticks): stops the sim
+          // exactly where the audit wants it, on every machine.
+          const driveTo = async (target, capMs = 180000) => {
             const deadline = performance.now() + capMs;
-            const wasManual = ctx.time.manual;
-            if (!done()) ctx.time.setManual(true);
-            while (!done() && performance.now() < deadline) {
-              if (ctx.time.queuedTicks < 120) ctx.time.queueTicks(240);
-              await sleep(20);
+            while (w().activity.stepSerial < target) {
+              if (performance.now() > deadline) throw new Error(`sim stuck at step ${w().activity.stepSerial} (wanted ${target})`);
+              if (ctx.time.queuedTicks === 0) ctx.time.queueTicks(Math.min(60, target - w().activity.stepSerial));
+              await sleep(5);
             }
-            if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
+          };
+          const withManualTime = async (fn) => {
+            const wasManual = ctx.time.manual;
+            ctx.time.setManual(true);
+            try {
+              return await fn();
+            } finally {
+              if (ctx.time.manual !== wasManual) ctx.time.setManual(wasManual);
+            }
           };
 
-          const waitForFindability = async (rt) => {
-            let latest = [];
-            let cleanFrames = 0;
-            // Let the level's own settled-repair cascade finish (it waits on sim
-            // steps) before judging convergence.
-            await driveSim(() => ctx.levels.findabilityReady);
-            await sleep(700);
-            // The level's own repair cascade runs through ~6.5 s after entry
-            // (SETTLED_FINDABILITY_REPAIR_DELAYS_MS): a powder column can seal
-            // a route ~2 s in and the next cascade step tears it back open.
-            // The audit asserts CONVERGENCE, so its window must outlast the
-            // cascade's final step.
-            const deadline = performance.now() + 8000;
-            while (performance.now() < deadline) {
-              latest = validateFindability(rt);
-              if (latest.every((issue) => issue.severity !== 'error')) {
-                cleanFrames++;
-                if (cleanFrames >= 3) return latest;
-              } else {
-                cleanFrames = 0;
-              }
-              await sleep(100);
+          // Findability is judged in SIM STEPS, never on the wall clock. The
+          // level keeps simulating while it is audited and powder seams drain for
+          // minutes after entry, so the old wall-clock wait audited a different
+          // moment on every machine (seed 5 d4: a gunpowder heap plugs the boss
+          // approach ~2,000 steps in; a loaded machine reached it, an idle one
+          // did not). The game's settled checks are step-scheduled (Levels), so
+          // every machine now audits the same window of the same settling, and
+          // an error counts only if it holds for the WHOLE window: a curtain of
+          // falling grains crosses a route and goes, a heap does not.
+          // 40 s in: after the entry checks (12 s) AND the game's late checks at 18, 26 and 36 s. Before that a
+          // seam can still be pouring over a route the late checks keep reopening (seed 3 d4: two braziers
+          // buried from ~13 s to ~36 s in real time), which no single moment of the pour can judge.
+          const AUDIT_FROM_STEP = 2400;
+          const AUDIT_WINDOW_STEPS = 600;
+          const AUDIT_EVERY_STEPS = 60;
+          const issueKey = (i) => `${i.what}@${i.x},${i.y}`;
+          const waitForFindability = (rt, entryStep, onSample) => withManualTime(async () => {
+            const deadline = performance.now() + 180000;
+            while (!ctx.levels.findabilityReady) {
+              if (performance.now() > deadline) throw new Error(`Route repair did not finish for ${rt.def.id}`);
+              await driveTo(w().activity.stepSerial + 60);
             }
-            return latest;
-          };
+            const from = Math.max(w().activity.stepSerial, entryStep + AUDIT_FROM_STEP);
+            let persistent = null;
+            let last = [];
+            for (let at = from; at <= from + AUDIT_WINDOW_STEPS; at += AUDIT_EVERY_STEPS) {
+              await driveTo(at);
+              last = validateFindability(rt);
+              const now = new Set(last.filter((i) => i.severity === 'error').map(issueKey));
+              persistent = persistent === null ? now : new Set([...persistent].filter((e) => now.has(e)));
+              onSample();
+            }
+            return last.filter((i) => i.severity !== 'error' || persistent.has(issueKey(i)));
+          });
 
           // Wait on SIM steps, not the wall clock: a slow frame or a heavy
           // validator call must not move the moment the habitat is judged.
-          const waitSteps = async (from, steps) => {
-            await driveSim(() => w().activity.stepSerial - from >= steps);
+          const waitSteps = (from, steps) => withManualTime(async () => {
+            await driveTo(from + steps);
             return w().activity.stepSerial - from;
-          };
+          });
 
           const out = [];
           for (const c of cases) {
@@ -221,24 +239,23 @@ try {
               : null;
             const nearbyLiquid = c.kind === 'rillback' ? countCells(liquidRect, ['Water', 'Blood']) : 0;
             const settledResidents = enemiesInRect(lair, c.kind);
-            const findability = await waitForFindability(rt);
-            // Mask sampling gets the same settle-tolerance the findability
-            // wait above has: the level SIMULATES while this audits, and a
-            // transient falling-debris plug along the fit-path can zero the
-            // wizard mask for a moment (the d6 stonemaw flake). Retry until
-            // the masks stabilize open, or accept the fail after the window.
+            // Mask sampling rides the findability window: the level SIMULATES
+            // while this audits, and a transient falling-debris plug along the
+            // fit-path can zero the wizard mask for a moment (the d6 stonemaw
+            // flake). The first sample with both masks open inside the lair is
+            // kept; if none is, the last one judges.
             let cellReach = null;
             let wizardReach = null;
             let lairCellReachCells = 0;
             let lairWizardReachCells = 0;
-            for (let tryN = 0; tryN < 10; tryN++) {
-              cellReach = rt ? reachableMask(rt) : null;
-              wizardReach = rt ? wizardMask(rt) : null;
+            const sampleMasks = () => {
+              if (!rt || (lairWizardReachCells > 0 && lairCellReachCells > 0)) return;
+              cellReach = reachableMask(rt);
+              wizardReach = wizardMask(rt);
               lairCellReachCells = countMaskInRect(cellReach, lair);
               lairWizardReachCells = countMaskInRect(wizardReach, lair);
-              if (lairWizardReachCells > 0 && lairCellReachCells > 0) break;
-              await sleep(400);
-            }
+            };
+            const findability = rt ? await waitForFindability(rt, settleFrom, sampleMasks) : [];
             const residentCellReachable = !!cellReach && residents.some((e) => near(cellReach, e.x, e.y, 12));
             const residentWizardReachable = !!wizardReach && residents.some((e) => near(wizardReach, e.x, e.y, 20));
             const lairCellReachable = lairCellReachCells >= 80 || residentCellReachable;
