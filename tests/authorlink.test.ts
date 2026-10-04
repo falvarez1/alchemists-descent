@@ -656,7 +656,7 @@ class FakeSocket implements Partial<WebSocket> {
   }
 }
 
-function makeClient(): { client: AuthorLinkClient; socket: FakeSocket } {
+function makeClient(suspended?: () => boolean): { client: AuthorLinkClient; socket: FakeSocket } {
   const socket = new FakeSocket();
   const client = new AuthorLinkClient({
     url: 'ws://test/link',
@@ -664,6 +664,7 @@ function makeClient(): { client: AuthorLinkClient; socket: FakeSocket } {
     role: 'builder',
     build: 'test',
     clientId: 'me',
+    suspended,
     socketFactory: () => socket as unknown as WebSocket,
     now: () => 42,
   });
@@ -673,6 +674,20 @@ function makeClient(): { client: AuthorLinkClient; socket: FakeSocket } {
 }
 
 describe('AuthorLinkClient', () => {
+  it('suspends application traffic while retaining the connection heartbeat', () => {
+    let suspended = true;
+    const { client, socket } = makeClient(() => suspended), seen: string[] = [];
+    client.on('tuning', m => seen.push(m.clientId));
+    socket.deliver(envelope({ clientId: 'other' }));
+    expect(seen).toEqual([]);
+    expect(client.send('tuning', { changes: [{ path: 'global.ambient', value: 1 }] })).toBe(false);
+    expect(client.send('pong', {})).toBe(true);
+    suspended = false;
+    socket.deliver(envelope({ clientId: 'other' }));
+    expect(seen).toEqual(['other']);
+    expect(client.send('tuning', { changes: [{ path: 'global.ambient', value: 1 }] })).toBe(true);
+    client.dispose();
+  });
   it('runs over a transport that is not a WebSocket at all', () => {
     // The load-bearing claim of the transport split: multiplayer can carry
     // these frames over SpacetimeDB (a "message" becomes a row, `send`

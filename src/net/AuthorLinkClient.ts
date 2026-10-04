@@ -64,6 +64,8 @@ export interface AuthorLinkClientOptions {
   /** Injectable for tests; ignored when `transportFactory` is supplied. */
   socketFactory?: (url: string) => WebSocket;
   now?: () => number;
+  /** Pause editor data delivery while another session owns the runtime. */
+  suspended?: () => boolean;
 }
 
 const HEARTBEAT_MS = 15_000;
@@ -176,6 +178,7 @@ export class AuthorLinkClient {
     payload: Extract<AuthorLinkMessage, { type: T }>['payload'],
   ): boolean {
     if (!this.connected || !this.transport) return false;
+    if (this.options.suspended?.() && type !== 'hello' && type !== 'ping' && type !== 'pong') return false;
     const message = {
       type,
       protocol: AUTHORLINK_PROTOCOL,
@@ -214,6 +217,7 @@ export class AuthorLinkClient {
    * silently stops working when the backend changes.
    */
   sendCells(payload: CellsPayload): boolean {
+    if (this.options.suspended?.()) return false;
     if (!this.connected || !this.transport) return false;
     if (!this.transport.supportsBinary || !this.transport.sendBinary) {
       return this.send('cells', payload);
@@ -292,6 +296,7 @@ export class AuthorLinkClient {
       },
     } satisfies Extract<AuthorLinkMessage, { type: 'cells' }>;
 
+    if (this.options.suspended?.()) return;
     const set = this.handlers.get('cells');
     if (!set) return;
     for (const handler of [...set]) handler(message);
@@ -328,6 +333,7 @@ export class AuthorLinkClient {
     if (parsed.type === 'welcome') this.setStatus({ peers: parsed.payload.peers, kind: 'connected' });
     if (parsed.type === 'presence') this.setStatus({ peers: parsed.payload.peers });
     if (parsed.type === 'error') this.setStatus({ detail: `${parsed.payload.code}: ${parsed.payload.detail}` });
+    if (this.options.suspended?.()) return;
     const set = this.handlers.get(parsed.type);
     if (!set) return;
     for (const handler of [...set]) handler(parsed);

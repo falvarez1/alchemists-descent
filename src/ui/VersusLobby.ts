@@ -43,6 +43,9 @@ export class VersusLobby {
     this.start.type = 'button'; this.start.id = 'versus-start'; this.start.textContent = 'Enter the Foundry'; this.start.addEventListener('click', () => { ctx.audio.ensure(); void ctx.versus?.start(); });
     this.status.className = 'versus-status'; this.status.setAttribute('role', 'status');
     this.root.querySelector('footer')!.append(back, this.status, this.start);
+    const lan = document.createElement('button'); lan.type = 'button'; lan.textContent = 'Play over LAN';
+    lan.addEventListener('click', () => ctx.events.emit('duelOpen'));
+    this.root.querySelector('footer')!.append(lan);
     this.reconnect.id = 'versus-reconnect'; this.reconnect.hidden = true;
     this.reconnect.setAttribute('role', 'dialog'); this.reconnect.setAttribute('aria-modal', 'true'); this.reconnect.setAttribute('aria-labelledby', 'versus-reconnect-heading');
     this.reconnect.innerHTML = `<div><h2 id="versus-reconnect-heading">Controller disconnected</h2><p role="status"></p><button type="button" data-resume>Resume match</button><button type="button" data-lobby>Change players</button></div>`;

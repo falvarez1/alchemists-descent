@@ -1712,6 +1712,8 @@ export interface NarratorApi {
 
 export interface ParticlesApi {
   readonly list: readonly FlyingParticle[];
+  /** Replace a replica's visible particles, without running deposition or damage. */
+  applyPresentation?(particles: readonly FlyingParticle[]): void;
   spawn(
     x: number,
     y: number,
@@ -3879,6 +3881,8 @@ export interface Ctx {
   /** Two fighters in one world (core/arena); absent in small test contexts and until a rival is added. */
   arena?: ArenaApi;
   versus?: VersusApi;
+  /** Network Duel: host authority or a render-only replica. */
+  duel?: import('@/core/duel').DuelApi;
   /** Light as a gameplay fact (render/LightQuery); absent in small test contexts. */
   lightQuery?: LightQueryApi;
   /** The streamed score; absent in small test contexts. */

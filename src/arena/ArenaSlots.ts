@@ -7,7 +7,7 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 import { ARENA_RULES } from '@/config/arenaRules';
 import { STOCK_RULES } from '@/config/stockRules';
-import type { BlastZone, StockLedgeInput, StockMatchView } from '@/core/arenaMatch';
+import type { BlastZone, StockLedgeInput, StockMatchView, StockDodgeView, StockShieldView, StockGrabView, StockLedgeView, StockSpecialView } from '@/core/arenaMatch';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
 import { StockShield } from '@/arena/StockShield';
@@ -16,7 +16,7 @@ import { StockSpecial } from '@/arena/StockSpecial';
 import { StockLedge } from '@/arena/StockLedge';
 import { StockAttack, stockAttackOverlaps } from '@/arena/StockAttack';
 import { stockMoveset } from '@/config/stockAttacks';
-import type { StockAttackKind, StockAttackSpec } from '@/core/stockAttacks';
+import type { StockAttackKind, StockAttackSpec, StockAttackView } from '@/core/stockAttacks';
 
 /**
  * ARENA SLOTS (docs/arena/ARCHITECTURE.md, D-001): two fighters in one world.
@@ -71,7 +71,8 @@ export class ArenaSlots implements ArenaApi {
   private readonly ledges = [new StockLedge(), new StockLedge()];
   private readonly attacks = [new StockAttack(), new StockAttack()];
   private readonly recovery = [{ used: false, held: false, ticks: 0 }, { used: false, held: false, ticks: 0 }];
-  get stockMatch(): StockMatchView | null { return this.match; }
+  private get replica() { return this.ctx.duel?.replica ? this.ctx.duel.presentation : null; }
+  get stockMatch(): StockMatchView | null { return this.replica?.match ?? this.match; }
 
   configureStocks(zone: BlastZone | null): void {
     this.match = zone ? new MatchDirector(STOCK_RULES, { ...zone }) : null;
@@ -85,20 +86,20 @@ export class ArenaSlots implements ArenaApi {
     if (this.active) this.reset();
   }
 
-  isLaunching(slot: number): boolean { return this.active && this.match !== null && this.launchTicks[slot] > 0; }
-  stockDodge(slot: number): StockDodge | null { return this.match ? this.dodges[slot] ?? null : null; }
-  canRecover(slot: number): boolean { return this.match !== null && this.recovery[slot]?.used === false; }
-  isRecovering(slot: number): boolean { return this.match !== null && (this.recovery[slot]?.ticks ?? 0) > 0; }
+  isLaunching(slot: number): boolean { return this.replica?.slots[slot]?.launching ?? (this.active && this.match !== null && this.launchTicks[slot] > 0); }
+  stockDodge(slot: number): StockDodgeView | null { return this.replica?.slots[slot]?.dodge ?? (this.match ? this.dodges[slot] ?? null : null); }
+  canRecover(slot: number): boolean { return this.replica?.slots[slot]?.canRecover ?? (this.match !== null && this.recovery[slot]?.used === false); }
+  isRecovering(slot: number): boolean { return this.replica?.slots[slot]?.recovering ?? (this.match !== null && (this.recovery[slot]?.ticks ?? 0) > 0); }
   isEvading(slot: number): boolean { return this.active && this.match !== null && (this.dodges[slot]?.evading === true || this.ledges[slot]?.protected === true); }
   isActionLocked(slot: number): boolean { return this.match !== null && (!this.runsBody(slot) || this.isLaunching(slot) || this.specials[slot]?.busy === true || this.dodges[slot]?.busy === true || this.shields[slot]?.busy === true || this.attacks[slot]?.busy === true || this.ledges[slot]?.busy === true || this.grabs[slot]?.busy === true || this.isGrabbed(slot)); }
-  stockSpecial(slot: number): StockSpecial | null { return this.match ? this.specials[slot] ?? null : null; }
+  stockSpecial(slot: number): StockSpecialView | null { return this.replica?.slots[slot]?.special ?? (this.match ? this.specials[slot] ?? null : null); }
   canStockSpecial(cost: 1 | 2 = 1): boolean {
     return !this.match || (this.active && !this.isActionLocked(this.boundSlot) && !this.ctx.player.dead && this.ctx.player.stunT <= 0 && this.specials[this.boundSlot].canSpend(cost));
   }
   spendStockSpecial(cost: 1 | 2 = 1): boolean { return this.canStockSpecial(cost) && (!this.match || this.specials[this.boundSlot].spend(cost)); }
   refundStockSpecial(cost: 1 | 2 = 1): void { if (this.match) this.specials[this.boundSlot].refund(cost); }
-  stockGrab(slot: number): StockGrab | null { return this.match ? this.grabs[slot] ?? null : null; }
-  isGrabbed(slot: number): boolean { return this.match !== null && this.grabs.some(g => g.victim === slot); }
+  stockGrab(slot: number): StockGrabView | null { return this.replica?.slots[slot]?.grab ?? (this.match ? this.grabs[slot] ?? null : null); }
+  isGrabbed(slot: number): boolean { return this.replica?.slots[slot]?.grabbed ?? (this.match !== null && this.grabs.some(g => g.victim === slot)); }
   requestStockGrab(): boolean {
     const slot = this.boundSlot, b = this.slots[slot]?.bundle;
     if (!b || !this.match || !this.runsBody(slot) || this.isLaunching(slot) || this.isGrabbed(slot) ||
@@ -108,7 +109,7 @@ export class ArenaSlots implements ArenaApi {
     if (!this.grabs[slot].start(facing)) return false;
     this.shields[slot].drop(); b.player.firing = b.player.firePressed = false; b.wands.clearTransientState?.(); return true;
   }
-  stockShield(slot: number): StockShield | null { return this.match ? this.shields[slot] ?? null : null; }
+  stockShield(slot: number): StockShieldView | null { return this.replica?.slots[slot]?.shield ?? (this.match ? this.shields[slot] ?? null : null); }
   updateStockShield(held: boolean, canAct: boolean): StockShield | null {
     if (!this.active || !this.match) return null;
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, shield = this.shields[slot];
@@ -123,7 +124,7 @@ export class ArenaSlots implements ArenaApi {
     this.ctx.audio.sfx(this.shields[slot].phase === 'broken' ? 'arena.shield.break' : 'arena.shield.block');
     return true;
   }
-  stockLedge(slot: number): StockLedge | null { return this.match ? this.ledges[slot] ?? null : null; }
+  stockLedge(slot: number): StockLedgeView | null { return this.replica?.slots[slot]?.ledge ?? (this.match ? this.ledges[slot] ?? null : null); }
   updateStockLedge(canAct: boolean, keys: StockLedgeInput = { dir: 0, up: false, down: false, jump: false }): boolean {
     if (!this.active || !this.match) return false;
     const slot = this.boundSlot, b = this.slots[slot]!.bundle, p = b.player;
@@ -135,7 +136,7 @@ export class ArenaSlots implements ArenaApi {
     p.firing = p.firePressed = false; b.wands.clearTransientState?.();
     return true;
   }
-  stockAttack(slot: number): StockAttack | null { return this.match ? this.attacks[slot] ?? null : null; }
+  stockAttack(slot: number): StockAttackView | null { return this.replica?.slots[slot]?.attack ?? (this.match ? this.attacks[slot] ?? null : null); }
   requestStockAttack(requestedKind?: StockAttackKind, requestedFacing?: number): boolean {
     const slot = this.boundSlot, b = this.slots[slot]?.bundle;
     if (!b || !this.match || this.isActionLocked(slot) || b.player.dead || b.player.stunT > 0 || b.fighters.ownsMovement ||
@@ -222,7 +223,8 @@ export class ArenaSlots implements ArenaApi {
   private readonly lastBlow: Array<{ by: number; at: number }> = [{ by: -1, at: -1e9 }, { by: -1, at: -1e9 }];
   private readonly focus = { x: 0, y: 0 };
   private ownerBound = false;
-  readonly bout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
+  private readonly localBout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
+  get bout(): Bout { return this.replica?.bout ?? this.localBout; }
   private blow: ArenaApi['activeBlow'] = null;
   /**
    * Each fighter carries ITS signature wands, cards and flasks (content/fighterLoadouts) instead of the run's: the primary attack is
@@ -396,7 +398,7 @@ export class ArenaSlots implements ArenaApi {
   private install(slot: number): void {
     const rec = this.slots[slot];
     if (!rec) return;
-    if (this.active) this.bridgeBack();
+    if (this.active && !this.ctx.duel?.replica) this.bridgeBack();
     this.rawInstall(rec.bundle);
     this.boundSlot = slot;
     this.ctx.events.boundSlot = slot;

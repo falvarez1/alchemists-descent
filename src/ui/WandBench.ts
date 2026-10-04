@@ -82,7 +82,7 @@ export function canOpenWandBench(ctx: Ctx): boolean {
   // The bench is the alchemist's own kit — openable any time in play, on any
   // floor (not just at the Refuge). Opening it pauses the sim, so it never
   // overlaps live combat regardless of where you pop it open.
-  return ctx.state.mode === 'play' && !ctx.versus?.active && !ctx.player.dead && ctx.levels.current !== null;
+  return ctx.state.mode === 'play' && !ctx.versus?.active && !ctx.duel?.active && !ctx.player.dead && ctx.levels.current !== null;
 }
 
 // ===================== Wand Bench =====================

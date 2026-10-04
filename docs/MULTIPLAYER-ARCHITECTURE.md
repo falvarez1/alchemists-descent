@@ -1,5 +1,11 @@
 # Multiplayer Architecture — decisions and evidence
 
+- **LAN Duel (2026-10-03).** Host-authoritative two-computer Duel now uses the
+  existing transport seam, with room authority and simulation adapters separated.
+  See [LAN Duel](DUEL-LAN.md) for setup, wire contracts, current limitations and
+  the SpacetimeDB migration path. The archived SDK implementation remains archived;
+  the new LAN implementation does not add a database dependency.
+
 - **Archived / frozen (2026-09-26).** Breathing Works ships single-player.
   The SpacetimeDB transport, module and bindings (`src/net/SpacetimeDbTransport.ts`,
   `src/net/spacetimeConnector.ts`, `servers/spacetime/`, their test and
