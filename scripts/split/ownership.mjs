@@ -1,11 +1,15 @@
-// THE OWNERSHIP MAP (docs/split/SPLIT-PLAN.md, Phase 0): which package or app every module in src/ is headed for, and
-// who may import whom once the repo is split. The survey (survey.mjs) and the ratchet test
-// (tests/split-boundaries.test.ts) both read it; this file is the map, the generated per-module listing is
-// verify-out/split/survey.json.
+// THE PRUNING MAP (docs/split/SPLIT-PLAN.md): what every module in src/ IS, which decides what each repository deletes
+// once the repo is copied in two (Descent keeps this repo, CLASHFORGED gets a copy with the same history):
+//
+//   clashforged, fighters, ui-kit   the arena: Descent deletes it; it is the heart of CLASHFORGED
+//   descent                         the campaign: CLASHFORGED deletes it, except what its kept code still imports
+//   engine, authoring               shared at the copy: both repos keep a copy, and from then on each evolves its own
+//   kernel                          the composition root (game/Game.ts): each repo cuts the other game's systems out
+//
+// The survey (survey.mjs) reads it; the generated per-module listing is verify-out/split/survey.json.
 //
 // A module's owner is its OVERRIDES entry if it has one, else the first RULES match. The rules are broad strokes
-// (a folder, a naming pattern); the overrides are the cases the strokes get wrong, each with the reason. When a
-// phase moves a module's job (a framework pulled out of campaign code), change its owner here in the same commit.
+// (a folder, a naming pattern); the overrides are the cases the strokes get wrong, each with the reason.
 
 // Arena-named modules that are not the arena: campaign test arenas, the lantern, a terrain plane.
 const NOT_ARENA = /^(game\/Lantern|world\/(wardenArenas|weaverArena|physicsArena|sandboxArena|looseStock)|render\/terrainArtPlane)\.ts$/;
@@ -56,17 +60,13 @@ export function owner(m) {
   return 'engine';
 }
 
-/** Who may depend on whom in the target layout (type-only imports count: a package's types are its API). */
-export const ALLOWED = {
-  engine: ['engine'],
-  'ui-kit': ['ui-kit', 'engine'],
-  fighters: ['fighters', 'engine'],
-  authoring: ['authoring', 'engine'],
-  descent: ['descent', 'engine', 'authoring'],
-  clashforged: ['clashforged', 'engine', 'fighters', 'ui-kit', 'authoring'],
-  kernel: ['kernel', 'engine', 'descent', 'clashforged', 'fighters', 'ui-kit', 'authoring'],
-};
+/** The arena: deleted from Descent, kept by CLASHFORGED. */
+export const ARENA = ['clashforged', 'fighters', 'ui-kit'];
+/** The campaign: deleted from CLASHFORGED unless kept code still imports it. */
+export const CAMPAIGN = ['descent'];
+/** Copied into both repositories at the split. */
+export const SHARED = ['engine', 'authoring'];
 
-/** Shared code (headed for the engine, Descent or authoring) that names an arena service through ctx. */
+/** Non-arena code that names an arena service through ctx: each of these is a line Descent deletes. */
 export const SEAM_RE = /ctx\.(fighters|arena|versus|duel)\b/g;
 export const SEAM_OWNERS = ['engine', 'descent', 'authoring'];

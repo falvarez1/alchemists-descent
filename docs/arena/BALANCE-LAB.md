@@ -163,16 +163,18 @@ the Lab, and are read by every gate.
 
 ### Where it lives (and the CLASHFORGED split)
 
-The Lab is CLASHFORGED tooling (`docs/split/SPLIT-PLAN.md`):
+The Lab is CLASHFORGED tooling. The repository is being copied in two (`docs/split/SPLIT-PLAN.md`): CLASHFORGED
+gets a copy with this history and keeps the arena, and Descent deletes it. The Lab is built in the CLASHFORGED
+repository. Work started before the copy moves there with its branch, because both repositories share the history.
 
-| Part | Built now in | Moves at split phase 6 to |
-|---|---|---|
-| The page | `src/lab/` | `apps/clashforged/lab/` |
-| The server | `tools/lab/` | `tools/clashforged/lab/` |
-| Sheets and the static analyser | `src/content/fighters/sheets/`, `src/fighters/analysis/` | `packages/fighters/` |
+| Part | Lives in |
+|---|---|
+| The page | `src/lab/` |
+| The server | `tools/lab/` |
+| Sheets and the static analyser | `src/content/fighters/sheets/`, `src/fighters/analysis/` |
 
-Lab code may import only fighters, arena, telemetry and config modules (and the engine). The split survey gains a rule
-for it, so the physical move is a path change and new Lab work does not add forbidden edges.
+Lab code imports only fighters, arena, telemetry and config modules (and the engine), so it stays one removable
+unit that D-L8 can keep out of every player build.
 
 ## 5. Data model
 
@@ -567,8 +569,8 @@ equivalence check prove it.
 
 ## 11. Later
 
-- **The headless kernel.** After split phases 1-3, the engine runs without a DOM, and matches can run in Node worker
-  threads without a browser. That is an expected 5-10 times the throughput, enough to make the full matrix a
+- **The headless kernel.** Once CLASHFORGED's own composition root has replaced `Game.ts` (split phase 3), the engine
+  can run without a DOM, and matches can run in Node worker threads without a browser. That is an expected 5-10 times the throughput, enough to make the full matrix a
   pre-merge check.
 - **A hosted Lab.** Share runs and drafts across machines through the AuthorLink relay (the original "Tuning Lab" idea
   in `docs/REALTIME-TUNING-LAB-AND-MULTIPLAYER-SERVER-SPEC.md`).
@@ -584,4 +586,4 @@ equivalence check prove it.
 | D-L11 | Stale-move negation? | Try it behind a rule flag and measure (blow concentration, the dominant-move warnings) before deciding |
 | D-L12 | Gate strictness in CI | L0 and L1 fail the build. L2 warns on pull requests touching fighter paths. L3 nightly opens an issue on failure. |
 | D-L13 | Do drafts get committed? | Only when shared: `balance/drafts/` holds named drafts people want to keep; the Lab ignores the rest |
-| D-L14 | Build before or after the split's physical move? | Before, in the isolated folders of section 4, so balance work is not blocked. The move script carries them. |
+| D-L14 | Build before or after the repository is copied in two? | After, in the CLASHFORGED repository (the copy is split phase 1, and short). Anything started before moves there with its branch: the histories are shared. |

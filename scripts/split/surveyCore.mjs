@@ -1,18 +1,25 @@
 // The split survey as a function (docs/split/SPLIT-PLAN.md): resolve every import in src/ (static, type-only,
-// dynamic, import.meta.glob), give each module its owner from ownership.mjs, and list every import that crosses a
-// boundary the target layout forbids. survey.mjs is the command line; tests/split-boundaries.test.ts is the ratchet.
+// dynamic, import.meta.glob), give each module its owner from ownership.mjs, and measure the two prunings the copy
+// sets up: what Descent cuts to delete the arena, and what CLASHFORGED can delete at once versus what its kept code
+// still imports from the campaign. survey.mjs is the command line.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED, SEAM_OWNERS, SEAM_RE, owner } from './ownership.mjs';
+import { ARENA, CAMPAIGN, SEAM_OWNERS, SEAM_RE, SHARED, owner } from './ownership.mjs';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const BASELINE_PATH = join(ROOT, 'scripts', 'split', 'baseline.json');
 
 const IMPORT_RE =
   /(?:^|[\s;])(?:import|export)\s+(type\s+)?(?:[^'";]*?\sfrom\s+)?['"]([^'"]+)['"]|import\(\s*(?:\/\*[^*]*\*\/\s*)?['"`]([^'"`]+)['"`]\s*\)|import\.meta\.glob(?:<[^>]*>)?\(\s*\[?\s*['"]([^'"]+)['"]/g;
 const TEST_IMPORT_RE = /(?:from\s+|import\(\s*)['"](@\/[^'"]+|\.\.\/src\/[^'"]+)['"]/g;
 const ARENA_SCRIPT = /duel|arena|fighter|versus|stock|foundry|lobby|fight-|loadout/i;
+
+/** A glob's source modules (`GLOB:fighters/kits/*.ts`): only `*` within one folder is used in src today. */
+function globTargets(glob, modules) {
+  const pattern = glob.slice('GLOB:'.length);
+  const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*/g, '[^/]*')}$`);
+  return modules.filter((m) => re.test(m));
+}
 
 export function survey(root = ROOT) {
   const SRC = join(root, 'src');
@@ -30,6 +37,7 @@ export function survey(root = ROOT) {
     spec = spec.split('?')[0];
     let base;
     if (spec.startsWith('@/')) base = join(SRC, spec.slice(2));
+    else if (spec.startsWith('/src/')) base = join(SRC, spec.slice('/src/'.length));
     else if (spec.startsWith('.')) base = resolve(dirname(from), spec);
     else return null; // a dependency from node_modules
     if (spec.includes('*')) return `GLOB:${rel(base)}`;
@@ -52,101 +60,104 @@ export function survey(root = ROOT) {
     }
     graph[rel(f)] = { lines: text.split('\n').length, edges, seamRefs: [...text.matchAll(SEAM_RE)].length };
   }
-
   const modules = Object.keys(graph).sort();
+  // Globs that pick up source modules become ordinary edges (the fighter kits, the fighter looks).
+  for (const m of modules) {
+    graph[m].edges = graph[m].edges.flatMap((e) =>
+      e.to.startsWith('GLOB:') ? globTargets(e.to, modules).filter((t) => t !== m).map((to) => ({ to, kind: 'glob' })) : [e],
+    ).filter((e) => !e.to.startsWith('UNRESOLVED:'));
+  }
+
+  const own = Object.fromEntries(modules.map((m) => [m, owner(m)]));
+  const tally = (list) => ({ modules: list.length, lines: list.reduce((s, m) => s + graph[m].lines, 0) });
   const byPkg = {};
   for (const m of modules) {
-    const p = owner(m);
-    byPkg[p] ??= { modules: 0, lines: 0 };
-    byPkg[p].modules++;
-    byPkg[p].lines += graph[m].lines;
+    byPkg[own[m]] ??= { modules: 0, lines: 0 };
+    byPkg[own[m]].modules++;
+    byPkg[own[m]].lines += graph[m].lines;
   }
 
-  const forbidden = [];
+  // ---- Descent: delete the arena. Every import of an arena module from code Descent keeps is a cut. ----
+  const arenaModules = modules.filter((m) => ARENA.includes(own[m]));
+  const descentCuts = [];
   for (const m of modules) {
-    const from = owner(m);
-    for (const e of graph[m].edges) {
-      if (/^(GLOB|UNRESOLVED):/.test(e.to)) continue;
-      const to = owner(e.to);
-      if (!ALLOWED[from].includes(to)) forbidden.push({ from: m, to: e.to, kind: e.kind, pair: `${from}->${to}` });
-    }
+    if (ARENA.includes(own[m])) continue;
+    for (const e of graph[m].edges) if (ARENA.includes(own[e.to])) descentCuts.push({ from: m, fromOwner: own[m], to: e.to, kind: e.kind });
   }
-  const pairs = {};
-  for (const f of forbidden) {
-    pairs[f.pair] ??= { edges: 0, files: new Set() };
-    pairs[f.pair].edges++;
-    pairs[f.pair].files.add(f.from);
-  }
-
-  // The arena seam inside shared code: how often the engine-to-be names an arena service through ctx.
   const seam = modules
-    .filter((m) => SEAM_OWNERS.includes(owner(m)) && graph[m].seamRefs)
+    .filter((m) => SEAM_OWNERS.includes(own[m]) && graph[m].seamRefs)
     .map((m) => ({ module: m, refs: graph[m].seamRefs }))
     .sort((a, b) => b.refs - a.refs);
 
-  // Tests: which package's modules each test imports.
-  const tests = {};
+  // ---- CLASHFORGED: delete the campaign. It keeps the arena and the shared code, and replaces the composition root
+  // (game/Game.ts) and the entry (main.ts) with its own; whatever campaign module that kept code still reaches stays
+  // until the code that imports it is trimmed. Measured twice: with the Builder (as it is kept today) and without.
+  const reach = (roots) => {
+    const seen = new Set(roots);
+    const queue = [...roots];
+    while (queue.length) {
+      const m = queue.pop();
+      for (const e of graph[m].edges) {
+        if (seen.has(e.to) || !graph[e.to] || own[e.to] === 'kernel' || e.to === 'main.ts') continue;
+        seen.add(e.to);
+        queue.push(e.to);
+      }
+    }
+    return seen;
+  };
+  const campaignModules = modules.filter((m) => CAMPAIGN.includes(own[m]));
+  const keptRoots = modules.filter((m) => ARENA.includes(own[m]) || SHARED.includes(own[m]));
+  const withBuilder = reach(keptRoots);
+  const withoutBuilder = reach(keptRoots.filter((m) => own[m] !== 'authoring'));
+  const campaignReached = campaignModules.filter((m) => withBuilder.has(m));
+  const campaignReachedWithoutBuilder = campaignModules.filter((m) => withoutBuilder.has(m));
+  // The first campaign module each kept module imports: where the trimming starts.
+  const clashCuts = [];
+  for (const m of keptRoots) {
+    for (const e of graph[m].edges) if (CAMPAIGN.includes(own[e.to])) clashCuts.push({ from: m, fromOwner: own[m], to: e.to, kind: e.kind });
+  }
+  const countBy = (list, key) => Object.fromEntries(Object.entries(list.reduce((acc, x) => ({ ...acc, [x[key]]: (acc[x[key]] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]));
+
+  // Tests: which side's modules each test imports.
+  const tests = { descent: [], clashforged: [], both: [], shared: [] };
   for (const f of readdirSync(join(root, 'tests'))) {
     if (!/\.test\.ts$/.test(f)) continue;
     const owners = new Set();
     for (const m of readFileSync(join(root, 'tests', f), 'utf8').matchAll(TEST_IMPORT_RE)) {
       const spec = m[1].replace(/^@\//, '').replace(/^\.\.\/src\//, '').replace(/\.ts$/, '');
       const hit = [`${spec}.ts`, `${spec}/index.ts`].find((c) => graph[c]);
-      if (hit) owners.add(owner(hit));
+      if (hit) owners.add(own[hit]);
     }
-    const arena = owners.has('clashforged') || owners.has('fighters');
-    const side = arena ? (owners.has('descent') ? 'both' : 'clashforged') : owners.has('descent') ? 'descent' : 'engine';
-    tests[side] = (tests[side] ?? 0) + 1;
+    const arena = [...owners].some((o) => ARENA.includes(o));
+    const campaign = [...owners].some((o) => CAMPAIGN.includes(o));
+    tests[arena ? (campaign ? 'both' : 'clashforged') : campaign ? 'descent' : 'shared'].push(f);
   }
   const scriptNames = readdirSync(join(root, 'scripts')).filter((f) => /\.(mjs|cjs|js)$/.test(f));
-  const scripts = { clashforged: scriptNames.filter((f) => ARENA_SCRIPT.test(f)).length, other: scriptNames.filter((f) => !ARENA_SCRIPT.test(f)).length };
 
   return {
     modules: modules.length,
     packages: byPkg,
-    forbiddenEdges: forbidden.length,
-    forbiddenByPair: Object.fromEntries(
-      Object.entries(pairs)
-        .sort((a, b) => b[1].edges - a[1].edges || a[0].localeCompare(b[0]))
-        .map(([k, v]) => [k, { edges: v.edges, files: [...v.files].sort() }]),
-    ),
-    arenaSeamInSharedCode: { files: seam.length, refs: seam.reduce((s, x) => s + x.refs, 0), byModule: seam },
-    tests,
-    scripts,
-    forbidden,
-    ownership: Object.fromEntries(modules.map((m) => [m, owner(m)])),
+    descent: {
+      deletes: tally(arenaModules),
+      cuts: descentCuts.length,
+      cutsByOwner: countBy(descentCuts, 'fromOwner'),
+      cutFiles: [...new Set(descentCuts.map((c) => c.from))].sort(),
+      seam: { files: seam.length, refs: seam.reduce((s, x) => s + x.refs, 0), byModule: seam },
+      cutList: descentCuts,
+    },
+    clashforged: {
+      campaign: tally(campaignModules),
+      deletesAtOnce: tally(campaignModules.filter((m) => !withBuilder.has(m))),
+      keptUntilTrimmed: tally(campaignReached),
+      keptUntilTrimmedWithoutBuilder: tally(campaignReachedWithoutBuilder),
+      cuts: clashCuts.length,
+      cutsByOwner: countBy(clashCuts, 'fromOwner'),
+      keptList: campaignReached,
+      cutList: clashCuts,
+    },
+    tests: Object.fromEntries(Object.entries(tests).map(([k, v]) => [k, v.length])),
+    testFiles: tests,
+    scripts: { clashforged: scriptNames.filter((f) => ARENA_SCRIPT.test(f)).length, other: scriptNames.filter((f) => !ARENA_SCRIPT.test(f)).length },
+    ownership: own,
   };
-}
-
-/** The numbers the ratchet holds: forbidden edges per pair, and the arena seam's ctx refs in shared code. */
-export function ratchetNumbers(report) {
-  return {
-    forbiddenEdges: report.forbiddenEdges,
-    byPair: Object.fromEntries(Object.entries(report.forbiddenByPair).map(([k, v]) => [k, v.edges]).sort((a, b) => a[0].localeCompare(b[0]))),
-    arenaSeamRefs: report.arenaSeamInSharedCode.refs,
-  };
-}
-
-export function readBaseline(path = BASELINE_PATH) {
-  return JSON.parse(readFileSync(path, 'utf8'));
-}
-
-/**
- * Compare today's numbers with the recorded baseline. `rises` break the boundary (a new crossing import, or a
- * new ctx.arena call in shared code); `drops` are progress the baseline has not banked yet. Both fail the ratchet:
- * a drop left unrecorded is slack someone else can spend.
- */
-export function compareToBaseline(now, base) {
-  const rises = [];
-  const drops = [];
-  const pairs = new Set([...Object.keys(now.byPair), ...Object.keys(base.byPair)]);
-  for (const p of [...pairs].sort()) {
-    const n = now.byPair[p] ?? 0;
-    const b = base.byPair[p] ?? 0;
-    if (n > b) rises.push(`${p}: ${b} -> ${n} edges`);
-    else if (n < b) drops.push(`${p}: ${b} -> ${n} edges`);
-  }
-  if (now.arenaSeamRefs > base.arenaSeamRefs) rises.push(`ctx.arena/fighters/versus/duel in shared code: ${base.arenaSeamRefs} -> ${now.arenaSeamRefs} refs`);
-  else if (now.arenaSeamRefs < base.arenaSeamRefs) drops.push(`ctx.arena/fighters/versus/duel in shared code: ${base.arenaSeamRefs} -> ${now.arenaSeamRefs} refs`);
-  return { rises, drops };
 }

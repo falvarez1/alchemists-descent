@@ -1,325 +1,255 @@
-# Splitting the repository into two games
+# Splitting into two games, in two repositories
 
-Status: **plan, approved decisions, nothing moved yet** (2026-10-04, branch `feature/split-clashforged`, baseline main `0437216`).
+Status: **plan, revised 2026-10-04: two repositories, copy first.** Phase 0 is done on `feature/split-phase-0`
+except the findability fix. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8 says what that
+plan was and why it was dropped.
 
-The Duel has grown into its own game. This plan turns one repository that ships one game into one repository that ships
-two, sharing a single engine:
+The Duel has grown into its own game. The repository is copied in two, and each copy deletes the other game:
 
 - **CLASHFORGED**: the Smash-style fighter (Duel, stock matches, LAN, ten fighters, announcer, Training), dressed in
-  the foundry UI kit on every screen.
-- **Alchemist's Descent / Breathing Works**: the campaign as it is today, with the arena removed (classic
-  Alchemist only).
+  the foundry UI kit on every screen. It gets a new repository with this one's full history.
+- **Alchemist's Descent / Breathing Works**: the campaign as it is today, without the arena (classic Alchemist only).
+  It stays in this repository.
+
+Both start from the same engine, then evolve separately. An engine fix reaches the other game only when someone
+ports it.
 
 ## 1. Decisions
 
-Each one was chosen for the long-term architecture, not for the least work.
-
 | # | Question | Decision | Why |
 |---|---|---|---|
-| D1 | Fork or monorepo | **Monorepo with a shared engine package** | A fork duplicates the engine and drifts; an engine fix should land in both games in one commit. |
-| D2 | What CLASHFORGED keeps | Duel, LAN, lobby, **Training** (the Proving Yard, player-facing), the **Builder** (dev-only, stage authoring), **AuthorLink** (dev-only live tuning). Not the Sandbox. | |
-| D3 | Descent and the arena | **Descent drops the arena entirely**: no Duel/Arena doors, no fighter picker, no fighters in runs. It keeps only the engine's generic hooks. | |
-| D4 | Where the Builder and AuthorLink live | **Shared `packages/authoring`**. Each game supplies its content through provider interfaces. | One editor, no copies. An app importing from another app would be a structural mistake. |
-| D5 | CLASHFORGED hosting | **Its own Cloudflare Pages project** (`clashforged.pages.dev`, Ajar Red account). Descent keeps `alchemists-descent.pages.dev` and GitHub Pages. | Cloudflare Pages can send the COOP/COEP headers the threaded sim needs, and a future online-Duel server can run as a Durable Object beside the AuthorLink relay. GitHub Pages allows one site per repo and cannot send headers. |
-| D6 | Repository name | **Rename to a studio name** (e.g. `purple-llama`) at the end of the split. | The repo will hold two games, so it should not be named after one. Descent's GitHub Pages URL changes and `alchemists-descent.pages.dev` becomes its main URL. |
-| D7 | Package manager | **pnpm workspaces**. Turborepo is deferred until CI time warrants it. | pnpm's strict resolution refuses undeclared imports, so the package boundaries are enforced when a module resolves, not only by our own test. |
-| D8 | Order of work | **Untangle in place first, move files last.** | Moving files while the graph is tangled breaks both games for weeks. Untangling first keeps every PR mergeable and both games green. |
+| D1 | One repository or two | **Two repositories, each with its own copy of the engine** | The games are very different (a falling-sand campaign and a platform fighter) and will diverge further. Sharing one engine would need neutral seams (actor contracts, a game kernel, registries, a split `Ctx`) that constrain both games and are most of the work. When both games want the same engine fix, it is ported by hand; `git cherry-pick` works while the two histories are close. |
+| D2 | What CLASHFORGED keeps | Duel, LAN, lobby, **Training** (the Proving Yard, made player-facing), the **Builder** (dev-only, stage authoring), **AuthorLink** (dev-only live tuning). Not the Sandbox. | |
+| D3 | Descent and the arena | **Descent deletes the arena entirely**: no Duel or Arena doors, no fighter picker, no fighters in runs, and no hooks kept for them | |
+| D4 | The Builder and AuthorLink | **Each repository keeps its own copy** | No shared package has to stay neutral; each editor serves one game's content. |
+| D5 | CLASHFORGED hosting | **Its own Cloudflare Pages project** (`clashforged.pages.dev`, Ajar Red account). Descent keeps `alchemists-descent.pages.dev` and GitHub Pages. | Cloudflare Pages can send the COOP/COEP headers the threaded sim needs, and a future online-Duel server can run as a Durable Object. |
+| D6 | Repositories | **Descent stays in `falvarez1/alchemists-descent`** (no rename; its URLs do not change). **CLASHFORGED is a new private repository, `falvarez1/clashforged`**, created from `main` with the full history. | The history keeps `git log` and blame working, lets a branch made before the copy be pushed to either repository, and lets early fixes cherry-pick cleanly. |
+| D7 | Package manager | **npm in both**, as today | pnpm workspaces were for the monorepo. |
+| D8 | Order of work | **Copy first, then each repository deletes the other game, in parallel** | Untangling before the copy only pays when the copies keep sharing code. Here each side's untangling is a deletion in its own repository. |
 
-## 2. What the survey measured
+## 2. What each repository deletes
 
-`node scripts/split/survey.mjs` resolves every import in `src/` (static, type-only, dynamic and `import.meta.glob`),
-assigns each module to its target package by first-cut ownership rules, and lists every import that crosses a
-boundary the target layout forbids. Full detail goes to `verify-out/split/survey.json`. Rerun it after every phase.
+`node scripts/split/survey.mjs` resolves every import in `src/` (static, type-only, dynamic and `import.meta.glob`).
+It classes each module by the pruning map in `scripts/split/ownership.mjs` and measures both deletions. Full detail,
+including every import to cut, is in `verify-out/split/survey.json`, or `--cuts` prints it. Rerun it after each step.
 
-Baseline at `0437216`:
+Measured on `feature/split-phase-0` (main `5554d51` plus Phase 0):
 
-| Target | Modules | Lines |
-|---|---:|---:|
-| `apps/descent` | 313 | 91,141 |
-| `packages/engine` | 282 | 81,133 |
-| `packages/authoring` (Builder, AuthorLink) | 54 | 33,273 |
-| `packages/fighters` | 60 | 17,015 |
-| `apps/clashforged` | 97 | 16,798 |
-| `game/Game.ts` (the composition root, splits in Phase 2) | 1 | 1,230 |
+| What the module is | Modules | Lines | Descent | CLASHFORGED |
+|---|---:|---:|---|---|
+| The campaign | 332 | 96,855 | keeps | deletes |
+| The engine | 249 | 72,933 | keeps a copy | keeps a copy |
+| The Builder and AuthorLink | 69 | 35,897 | keeps a copy | keeps a copy (dev-only) |
+| The fighters (roster, kits, `FighterSystem`, looks) | 60 | 17,015 | deletes | keeps |
+| The Duel (rules, stages, AI, LAN, lobby, HUD, announcer) and the foundry kit loader | 98 | 16,832 | deletes | keeps |
+| `game/Game.ts`, the composition root | 1 | 1,230 | cuts the Duel's systems out | cuts the campaign's systems out |
 
-**248 forbidden edges:**
+### 2.1 Descent deletes the arena
 
-| From → to | Edges | Files | What it is |
-|---|---:|---:|---|
-| engine → descent | 92 | 50 | The renderer draws the tea machine, flora and organisms. `Player`, `Enemies` and the wands import campaign content (mutators, perks, enemy defs, reward pools). Audio imports the score, narration and lore. |
-| authoring → descent | 84 | 23 | The Builder reads campaign content directly: palette, prefabs, enemy defs, levels, backdrops, asset database. |
-| engine → clashforged | 19 | 12 | `Player` (arena rules, stock movement), physics, lighting, camera, `FrameComposer` (stage art, KO fx), `PlayerSprite`, audio, input (pads, versus devices), `core/types.ts`. |
-| clashforged ↔ descent | 27 | 16 | `Levels` builds the Duel stages, `PauseOverlay` knows stocks, the title and run carry a fighter, the console has arena commands. |
-| descent / engine → fighters | 17 | 14 | Runs, meta profile, title model, events, sprites. |
-| other | 9 | | |
+- **158 modules (33,847 lines)**, plus:
+  - assets: `public/audio/duel` (0.9 MB), `public/assets/arena` (3.2 MB) and `public/assets/fighters` (1.8 MB);
+  - the LAN Duel server (`servers/duel`, the Vite `duelPlugin`);
+  - 52 tests, 74 scripts, `docs/arena`, `docs/fighters`, `docs/FIGHTERS.md` and `docs/DUEL-LAN.md`;
+  - the arena and foundry stylesheets.
+- **68 imports of arena code, in 29 files Descent keeps.**
+  - 17 are in `Game.ts`, which builds and ticks the Duel's systems.
+  - 27 are in engine code: `Player`, physics, lighting, camera, `FrameComposer`, the player sprites, audio, input and
+    `core/types.ts`.
+  - 24 are in campaign code: `Levels` builds the Duel stages, the title has the Duel and Arena doors and the fighter
+    row, the run and meta profile carry a fighter, the console has arena commands, and the pause menu knows stocks.
+- **193 `ctx.arena` / `ctx.fighters` / `ctx.versus` / `ctx.duel` calls in 27 files.** `Player.ts` has 60,
+  `PauseOverlay.ts` 19, `playerPose.ts` 17 and `Enemies.ts` 11. For the classic Alchemist every one of them is
+  already a no-op (`ctx.fighters` is absent or its id is null), so they are deleted with their branch, not
+  redesigned.
+- **6 tests import both games** (`arena-slots`, `duel-audio`, `fighter-arena`, `fighter-run-reset`, `fighters-thorne`,
+  `title-menu-model`). Each is trimmed to its Descent half or deleted.
 
-Beyond imports, shared code calls the arena **193 times** through `ctx.arena`, `ctx.fighters`, `ctx.versus` and
-`ctx.duel`, in 27 files. `Player.ts` accounts for 60 of them, `Game.ts` for 29 and `PauseOverlay.ts` for 19.
-`Game.ts` builds 17 Duel systems directly and threads them through the tick (`ctx.arena?.runRivals('body')`,
-`ctx.duel?.beforeTick()`, replica gating).
+### 2.2 CLASHFORGED deletes the campaign
 
-Arena code itself leans on `ctx.enemies` / `ctx.enemyCtl` (kits target foes; the yard has dummies), wands, flask,
-projectiles, spells, physics, rigid bodies and particles. The enemy **framework** and combat are therefore engine
-code, even though the creature **roster** is Descent content.
+The survey walks every import from what CLASHFORGED keeps (the arena, the engine, the Builder). It does not walk
+from `Game.ts` or `main.ts`, because CLASHFORGED writes its own.
 
-**Tests** split cleanly: 143 Descent, 50 CLASHFORGED, 80 engine, 8 both (`ai-*`, `player-sprite-visibility`,
-`title-menu-model`). **Scripts**: 74 of the 426 runnable scripts are arena probes and tools.
+- **219 campaign modules (68,762 lines) are reached by nothing it keeps.** They go at once, with the campaign's
+  assets: `public/audio/music` and `public/audio/voice` (58 MB) and `public/assets/living-descent` (2.4 MB). The 141
+  Descent-only tests go too.
+- **113 campaign modules (28,093 lines) are still imported by kept code.** They stay, as ordinary code in that
+  repository, until the code that imports them is trimmed. The Builder alone accounts for 15 of them; the other 98
+  are reached from the engine and the arena.
+  - The creature roster: species, art, bosses and the Weaver (30 modules).
+  - World modules the engine and the Builder read (22).
+  - Campaign content and rules that `Player`, `Enemies` and the Builder read: enemy definitions, materials, recipes,
+    boons, mutators, perks, difficulty, pacing, the run and the story (22 across `content`, `core` and `config`).
+  - The campaign's render layers: the tea machine, flora, organisms and story figures (16).
+  - Smaller game and UI helpers.
+- **145 imports keep them alive**: 110 from the engine, 34 from the Builder and 1 from the arena. Trimming means
+  cutting these imports, then deleting whatever the survey no longer reaches.
+- **One coupling has no import.** The Proving Yard's foe buttons (`content/fighterArena.ts` `FOE_PRESETS`) spawn
+  Descent's roster creatures by kind string. Training needs its own dummies before the roster can go.
 
-## 3. Target layout
+## 3. Checks that every phase must pass
 
-```
-packages/
-  engine/       cell sim + World, worldgen primitives, render + lighting + bloom, physics (Rapier), entities (Player,
-                Enemy framework, rigid bodies), combat (wands, spells, projectiles, flask), particles, audio engine,
-                input, net transport, the WASM kernels, the game kernel (loop, fixed step, frame order), the
-                actor-slot runtime, the registries in section 4
-  fighters/     what a fighter IS: roster, bodies, techniques, loadouts, kits, FighterSystem, looks, fighter art
-  ui-kit/       the foundry kit: foundry-ui.css (.fk-*), kit.json + art, foundryKit.ts preloader, the gallery page
-  authoring/    the Builder + AuthorLink (client, relay room, Vite plugin, Cloudflare worker); dev-only in both apps
-apps/
-  descent/      the campaign: levels, worldgen biomes, creatures roster, run/meta/boons/mutators, story + narrator,
-                title, HUD, Sandbox, campaign content and assets
-  clashforged/  match rules (stocks, shields, grabs, ledges, specials), ArenaSlots rules, AI bots, Duel + LAN
-                (client, room, server), lobby, HUD, stages, announcer, Training, its title/options/credits shell
-tools/
-  shared/       run-helpers, probe harness, art + audio pipelines (ElevenLabs client), perf benches, the split survey
-  descent/      the campaign probes (verify-*, shot-*, studios)
-  clashforged/  the Duel probes, fight-batch / fight-analyse / tuner, fighter-studio, sprite + stage pipelines
-servers/        relay deploy configs that are not packages (moved under authoring/ or clashforged/ where they belong)
-```
+- **Behaviour oracles** (`scripts/split/oracles.mjs record|check <url>`, baseline in `scripts/split/oracles.json`):
+  - `sim`: the golden multi-chunk scene stepped in Node (state `58fff223`);
+  - `cellSim`: a real generated world, 240 cell-sim ticks in the real game (planes `7738daa3`, per-stream draws);
+  - `genGolden`: the cave generator's hashes (`tests/gen-golden.test.ts`);
+  - `duels`: 20 seeded stock matches, every fighter on both sides, all four stages.
+    - Whole-tick replay is not exact yet, so `record` runs the batch twice.
+    - The 19 matches that replay identically are held exactly (winner, ticks, stocks); the other is held to its
+      winner only.
+    - Both unstable matches seen so far were on the gallery stage.
 
-**Allowed dependencies** (a package may import only what is listed; type-only imports count):
-
-```
-engine        → (nothing)
-ui-kit        → engine
-fighters      → engine
-authoring     → engine
-descent       → engine, authoring
-clashforged   → engine, fighters, ui-kit, authoring
-tools/*       → anything (they drive the apps through the page)
-```
-
-`apps/*` never import each other. A package never imports an app.
-
-## 4. The seams: how the engine stops naming either game
-
-### 4.1 The game kernel and game modules (replaces `Game.ts`)
-
-`Game.ts` today is three things: the loop (fixed-step accumulator, frame order), the construction of every system,
-and the game rules threaded through the tick. The engine keeps the first; each app owns the other two.
-
-- `packages/engine/kernel`: `GameKernel` owns the clock, the frame order, the sim bounds, the render pass and the
-  core systems (World, Simulation, renderer, lighting, camera, physics, particles, audio engine, input, the
-  player slot runtime).
-- A **`GameModule`** interface with **named, ordered hooks**, one for each place a game acts on the tick today:
-  `install(ctx)`, `beforeTick`, `extendSimBounds`, the actor phases (`body`, `flask`, `wands`), `afterTick`,
-  `frame(now)`, `isReplica` (a LAN guest renders authoritative state and runs no sim), `dispose`.
-- Each app has a **composition root**: `apps/descent/src/DescentGame.ts` and `apps/clashforged/src/ClashGame.ts`.
-  Each builds the kernel and installs its modules.
-- **The frame order stays a contract**, documented in the engine's ARCHITECTURE.md and pinned by a test that
-  records the hook order. Hooks run in a fixed order; modules cannot reorder the kernel.
-
-### 4.2 Several fighters in one world: the actor-slot runtime moves into the engine
-
-`ArenaSlots` (898 lines) mixes two jobs. One is generic: N player bundles in one world, binding `ctx.player` to a
-slot, a per-slot time scale (a slow is time), a seeded resolution order each tick. The other is the stock-match
-rules. The generic half becomes the engine's `ActorSlots`; Descent uses one slot. The rules stay in CLASHFORGED.
-This also keeps online play, peer ghosts and any future co-op on one runtime.
-
-### 4.3 Neutral actor contracts instead of `ctx.arena` / `ctx.fighters` (the 193 calls)
-
-The engine's `Player` asks neutral questions; a game answers them. The engine provides defaults that reproduce
-today's campaign behaviour exactly.
-
-| Engine contract | Replaces | What it answers |
-|---|---|---|
-| `ActorRules` | `ctx.arena` in `Player` and physics | damage scale by source, invulnerability window, evading/blocking a hit, redirecting damage (stock percent), what a knockout does (a death screen or the match decides), action locks |
-| `MovementExtension` | the stock dodge/shield/grab/ledge/recovery/fast-fall calls | a pipeline the player controller runs: filter the keys, then claim the body before or after the engine's own move |
-| `ActorAbilities` | the engine-facing part of `ctx.fighters` | body multipliers (`NEUTRAL_BODY` in the engine), move/climb scale, climb holds, owns-movement, stagger resistance, melee notes |
-
-`ARENA_RULES`, `STOCK_FAST_FALL` and `STOCK_STAGES` leave the engine and become values the CLASHFORGED
-implementations return.
-
-### 4.4 `Ctx`: an engine core plus per-app extensions
-
-`core/types.ts` (4,056 lines) splits along the same lines:
-
-- `packages/engine` declares `Ctx` with only engine services.
-- Each app adds its own fields by **declaration merging** in one file per app (`apps/descent/src/ctx.d.ts`:
-  `run`, `story`, `mutators`, `brewing`...; `apps/clashforged/src/ctx.d.ts`: `match`, `versus`, `duel`,
-  `fighters`).
-- The engine is type-checked as its own program, so engine code that touches an app field fails to compile.
-  That is the guarantee, not a convention.
-- Event names and SFX ids (the 447-member union) extend the same way: the engine's union plus each app's.
-
-### 4.5 Registries: the engine owns the slot, the game owns the content
-
-These replace hard-coded ids and direct imports:
-
-- **Levels.** `LevelHost` keeps World-per-level persistence, enter/leave and the curtain. Apps register level
-  definitions with `build(ctx)`, objective and curtain text. This removes `if (id === 'fighter-duel')` from
-  `Levels`; Descent registers floors and its test arenas, CLASHFORGED its stages and the Training yard.
-- **Render.** `FrameComposer` layers (stage art, atmosphere, KO fx, fighter fx, the tea machine, flora, organisms,
-  story figures), camera rigs (`StockCameraRig`), player appearance providers (`FighterArt`, Duel sprites),
-  lighting stage profiles.
-- **Audio.** The engine keeps `AudioEngine`, `SfxEngine`, mix, buses and streams, plus the sound bank its own
-  systems emit (materials, explosions, spells, player foley). Apps register cue banks, scores, the narrator or the
-  announcer. Music rules are per app.
-- **Input.** Device providers (versus devices, stock pad) and binding sets per app.
-- **Enemies.** The engine keeps the enemy framework and a kind registry. The creature roster, its defs and its art
-  register from Descent; Training dummies register from CLASHFORGED.
-- **Overlays.** Pause-menu sections, console command packs, HUD panels.
-
-### 4.6 Builder content providers (the 84 Builder → Descent edges)
-
-`packages/authoring` defines `AuthoringContent`: material palette, prefabs, placeable kinds, level/stage templates,
-backdrops, the asset database and a compile target (the host app's runtime, through `BuilderHost`). Descent supplies
-the campaign set. CLASHFORGED supplies stages, platforms and its own placeables, which makes stage authoring a real
-feature rather than a side effect.
-
-### 4.7 Saves and storage
-
-- Every `localStorage` / IndexedDB key goes through one app-scoped namespace. In dev, both apps run on `localhost`
-  and would otherwise overwrite each other's keys. There are 37 files that touch `localStorage` today.
-- Descent saves keep their keys, so no player loses a run. A Descent save or meta profile that names a fighter
-  loads as the classic Alchemist; the field is read and dropped, never an error.
-- CLASHFORGED starts its own namespace and imports nothing from Descent saves.
-
-## 5. Tooling, build, CI and deploy
-
-- **Workspaces.** pnpm with a `pnpm-workspace.yaml`. Internal packages are consumed as **TypeScript source**
-  (`"exports": { "./*": "./src/*.ts" }`), so there is no package build step and Vite compiles everything.
-- **Imports.** Imports become package names (`@purple-llama/engine/sim/World`), including a package's
-  self-references. The `@/` alias goes, because it cannot mean one thing in shared code compiled by two apps. Hard
-  invariant 7 in CLAUDE.md changes accordingly. The rewrite is a codemod.
-- **Type checking.** Each package and app has its own `tsconfig` (strict, as today), run per workspace. The engine
-  checked alone is what proves 4.4.
-- **Boundaries.** `tools/shared/split/survey.mjs` becomes a test: zero forbidden edges, using each
-  `package.json`'s declared dependencies. pnpm enforces the same rule at resolve time.
-- **Tests.** Vitest projects per package and app. The 8 mixed tests split with their subjects.
-- **Vite.** One config per app on a shared preset. Each app keeps its `index.html`, its generated `builder.html`
-  (authoring builds only), its world-layer chunk rule (the rule moves to package paths) and its
-  `__AUTHORING__` gate. The AuthorLink relay plugin comes from `packages/authoring`; the LAN Duel plugin from
-  `apps/clashforged`.
-- **Dev ports.** Descent stays on `:5173`; CLASHFORGED moves to `:5175`. Probes take their URL from a per-app
-  default.
-- **Assets.**
-  - `public/audio/music` and `public/audio/voice` (58 MB) go to Descent.
-  - `public/audio/duel`, `public/assets/arena` and `public/assets/fighters` go to CLASHFORGED (or to fighters where
-    they are roster art).
-  - The kit art goes to ui-kit.
-  - The engine's own SFX bank goes to the engine.
-- **CI.** One workflow with a job per app: typecheck, lint, tests and production build per workspace, then each
-  app's browser checks. The engine job runs when anything under `packages/` changes. The existing red "Runtime
-  browser safety probes" step (see PROBE-HEALTH) is fixed or quarantined in Phase 0, so the split can be judged on
-  a green baseline.
-- **Deploy.**
-  - Descent keeps both deploys.
-  - CLASHFORGED gets its own Cloudflare Pages project with its own `_headers` (COOP/COEP) and a hosted-build probe
-    like `verify-hosted-game`.
-  - No relay token ships in either public build.
-  - The repo rename (D6) is the last step, with the GitHub Pages base path and the AuthorLink origin allowlist
-    updated in the same change.
-- **Docs.**
-  - A root CLAUDE.md (the monorepo, the boundaries, the commands).
-  - One CLAUDE.md per app and per package, which Claude Code loads when working in that folder.
-  - ARCHITECTURE.md per package; the campaign's frame-order contract moves to the engine's.
-
-## 6. Phases
-
-Every phase is its own PR (or a short series), merges to main on its own, and leaves **both games playable with
-their checks green**. Phases 1–5 change no folder layout.
-
-**Behaviour oracles** recorded in Phase 0 and re-checked after every phase:
-- sim determinism hashes (`verify:determinism`, `bench-sim` behaviour hash);
-- the cave generator golden test (`tests/gen-golden.test.ts`);
-- seeded `fight-batch` results (winner and tick count per seed, against a frozen worktree server);
-- the probe set from section 6.0.
-
-### Phase 0: guard rails
-- Check in the ownership map (generated by the survey, plus manual overrides for the cases the rules get wrong).
-- A ratchet test fails if the forbidden-edge count rises above the recorded baseline.
-- Record the oracles. Triage main's red CI step (PROBE-HEALTH.md) so the baseline is green.
-- **Gate probes**:
+  Descent keeps `sim`, `cellSim` and `genGolden`. CLASHFORGED keeps `sim` and `duels`, because the cave generator and
+  the in-game cell-sim scene go with the campaign. A deliberate behaviour change re-records, and its commit says so.
+- **Gate probes** (`node scripts/split/gate-probes.mjs descent|clashforged <url>`, run one at a time):
   - Descent: `verify-runtime-ui`, `verify-tea-machine`, `verify-living-progression`, `verify-run-lifecycle`,
     `verify:findability`, `verify-builder-expedition`, `verify:authorlink`, `verify-title-menu`.
   - CLASHFORGED: `verify-stock-match`, `verify-duel-ui`, `verify-local-versus`, `verify-duel-lan`,
     `verify-fighter-arena`, `verify-fighter-roster-play`, `verify-duel-audio`.
-- **Exit:** ratchet test in CI; oracles recorded; gate probes green on main.
+- **Both against a FROZEN worktree's dev server.** A `src` edit hot-reloads a probe's page mid-run, and the failure
+  looks real.
+- **Each repository's CI is green**: typecheck, lint, tests, production build and its browser checks.
 
-### Phase 1: the actor-slot runtime and neutral actor contracts (4.2, 4.3)
-- Extract `ActorSlots` from `ArenaSlots`.
-- Introduce `ActorRules`, `MovementExtension` and `ActorAbilities` with campaign-exact defaults. Move `Player`,
-  physics and sprites onto them.
+## 4. Phases
+
+Every phase is its own PR in its own repository and leaves that game playable. Phases 2 and 3 run in parallel.
+
+### Phase 0: a clean baseline (this repository, before the copy)
+
+Whatever is on `main` at the copy lands in both repositories, so its fixes and checks are made once, here.
+
+- **CI green on main.**
+  - Fixed: the AuthorLink world pull. It gave up 20 s after asking, while a 9.2 MB world was still arriving on a slow
+    CI runner (`src/app/authorLinkPull.ts`). The 9 MB itself is a separate bug: the receiver's recolouring no longer
+    matches the cave generator, so every cell's colour is sent.
+  - Open: the findability audits (`verify:findability`, seed 5). They fail on some runs and not others, because they
+    audit a running sim against the wall clock.
+- **Oracles recorded**, and identical on a rerun.
+- **Gate probes.** Five of the 15 were stale, not the game, and were repaired (`docs/PROBE-HEALTH.md`). All are
+  green when run alone, except findability, which waits on its fix.
+- **The pruning map and the survey**, above.
+- **Exit:** CI green on main; oracles recorded; the 15 gate probes green.
+
+### Phase 1: the copy
+
+1. Land or re-target open arena work first (the Balance Lab, any fighter branch). Both repositories share the
+   history, so a branch made before the copy can be pushed to either remote afterwards.
+2. Create `falvarez1/clashforged` (private) and push `main` with its history and tags, but not the other branches.
+3. Disable GitHub Actions on the new repository until Phase 4 gives it its own CI and deploy. Otherwise the first
+   push runs Descent's probes and a GitHub Pages deploy.
+4. Clone it to `Y:\Projects\clashforged`, with its worktrees in `Y:\Projects\clashforged-worktrees\`.
+5. Move the untracked Duel sprite library (`Y:\Projects\alchemists-descent-worktrees\sprite-library`, 986 MB, never in
+   git) to `docs/arena/platform-fighter/sprite-library` in that checkout, where it stays ignored.
+
+- **Exit:** both repositories build, test and pass their gate probes, unchanged (each still holds the whole game).
+
+### Phase 2: Descent deletes the arena (this repository)
+
+1. **The composition root:**
+   - `Game.ts` stops building and ticking the Duel's systems.
+   - The title loses the Duel and Arena doors and the fighter row.
+   - `Levels` loses the Duel stages and the Proving Yard.
+   - The console loses its arena packs, and the pause menu its stocks.
+2. **The engine hooks:**
+   - Delete the 193 `ctx.arena` / `fighters` / `versus` / `duel` branches and the 27 engine imports of arena code.
+   - `Ctx` and `core/types.ts` lose the arena's fields and types.
+   - The event map loses the arena's events, and the SFX ids lose the Duel's cues.
+3. **The modules, assets, server, tests, scripts and docs** listed in 2.1. CLAUDE.md loses the fighter, Duel and
+   arena-probe sections; the indie-game-dev skill loses the fighters.
+4. **Saves.** `RunSaveState` and the meta profile still read a fighter field and drop it (the classic Alchemist),
+   never an error. A test loads a recorded pre-split save and profile.
+
 - **Exit:**
-  - no `ctx.arena` / `ctx.fighters` call left in engine-bound entities;
-  - `engine → clashforged` and `engine → fighters` edges from `entities/` at zero;
-  - oracles identical.
+  - the survey finds no arena modules and nothing to cut;
+  - the Descent oracles are identical and its gate probes green;
+  - the production bundle holds no fighter or Duel module (a check like `verify:builder-bundle`);
+  - CI is green.
 
-### Phase 2: the game kernel (4.1)
-- Split `Game.ts` into `GameKernel` plus a Descent module and a CLASHFORGED module. One composition root still
-  installs both, so it is still one app and one bundle.
-- A test pins the hook order.
-- **Exit:** `Game.ts` gone; no Duel system named outside the CLASHFORGED module; oracles identical.
+### Phase 3: CLASHFORGED deletes the campaign (the new repository)
 
-### Phase 3: registries and the `Ctx` split (4.4, 4.5)
-- Levels, render layers, camera rigs, audio banks, input devices, enemy kinds, pause sections and console packs
-  become registries.
-- `core/types.ts` divides into engine contracts plus per-app extensions.
-- **Exit:** `engine → descent` and `engine → clashforged` edges at zero; the engine type-checks as its own program.
+1. **A composition root and entry of its own.**
+   - It is `Game.ts` without the campaign's systems: the run director, story, Sanctum, waves, mutators, brewing, the
+     tea machine and flora.
+   - The Duel lobby is the front door until Phase 4 builds the shell.
+2. **Delete what nothing reaches:** the 219 modules, the campaign assets, the 141 Descent tests, and the Descent
+   probes and docs.
+3. **Trim the 113 kept modules** by cutting their 145 imports.
+   - Engine code that reads campaign rules (boons, mutators, perks, difficulty, pacing) takes the campaign's default
+     value in place.
+   - The Builder gets the Duel's content (stages, platforms, its own placeables) instead of the campaign's palette,
+     prefabs and levels.
+   - Rerun the survey after each cut and delete what it no longer reaches.
+4. **Training gets its own dummies**, registered by the Duel. Then the creature roster goes.
+5. **Storage.** CLASHFORGED is its own origin (`clashforged.pages.dev`, and another port in dev), so its
+   `localStorage` is already separate. Its keys still get their own prefix in place of `alchemists-descent-*` and
+   `noita-*`.
 
-### Phase 4: Builder content providers (4.6)
-- `AuthoringContent`; Descent's provider reproduces today's Builder exactly.
-- **Exit:** `authoring → descent` at zero; every Builder probe green
-  (`verify-builder-suite`, `-expedition`, `-pro`, `-prefabs`, `-power`, `verify:authorlink`).
-
-### Phase 5: two entry points, Descent without the arena (D3, 4.7)
-- Two composition roots and two HTML entries in the current tree: `index.html` (Descent) and `clashforged.html`.
-- Descent's root installs no arena module. This removes the title's Duel and Arena doors, the fighter row, fighters
-  in runs and the meta profile, the arena levels, the console's arena commands and the pause stocks.
-- Storage namespaces go in. Old-save compatibility gets a test.
 - **Exit:**
-  - forbidden edges at **zero**;
-  - Descent's production bundle contains no fighter or Duel module (a bundle check, like `verify:builder-bundle`);
-  - both entries pass their gate probes.
+  - the CLASHFORGED oracles are identical and its gate probes green;
+  - no Descent screen, string or asset is reachable;
+  - the survey's campaign count is what the remaining imports justify.
 
-### Phase 6: the physical move (D7, section 3, section 5)
-- A **re-runnable script** that does the `git mv`s into packages, apps and tools, writes the `package.json` and
-  `tsconfig` files, rewrites imports by codemod, switches to pnpm and splits the Vite configs.
-- It is regenerated on top of the latest main, never rebased.
-- It runs in a short **freeze window** with no other open branches, because it touches every file.
-- History is kept (`git log --follow`).
-- **Exit:** both apps build, test and pass their gate probes from their own folders; CI runs per app.
+### Phase 4: CLASHFORGED stands on its own
 
-### Phase 7: the CLASHFORGED shell
-- Its own title, options, controls, dialogs, toasts, loading and credits, all from the foundry kit (references in
-  `alchemists-descent-worktrees/UI/V1`).
-- Training mode (the Proving Yard, player-facing).
-- Brand config, favicon, the Cloudflare Pages project and the hosted probe.
-- **Exit:** CLASHFORGED deploys to its own site; no Descent screen or string is reachable from it.
+- **Its shell, from the foundry kit:** title, options, controls, dialogs, toasts, loading and credits (references in
+  `Y:\Projects\alchemists-descent-worktrees\UI\V1`). Training becomes a player-facing mode.
+- **Brand:** `config/brand.ts`, favicon and `package.json` name.
+- **Its CI**: typecheck, lint, tests, build and its own browser checks.
+- **Its deploy:**
+  - the Cloudflare Pages project `clashforged` (D5), with its own `_headers` (COOP/COEP);
+  - a hosted probe like `verify-hosted-game`;
+  - its own deploy skill;
+  - its own `AUTHORLINK_URL` variable and Cloudflare credentials. No relay token ships in a public build.
+- **Its docs:** `CLAUDE.md`, `ARCHITECTURE.md`, `PROBE-HEALTH.md`, the arena docs at the top level. Claude's memory
+  is per checkout path, so it starts empty there; seed it with the arena notes.
 
-### Phase 8: docs, cleanup, rename
-- Per-app CLAUDE.md and ARCHITECTURE.md; the arena docs move under `apps/clashforged/docs`.
-- PROBE-HEALTH split per app; stale worktrees removed.
-- **Repo rename (D6)**, with the Pages base path, the relay allowlist and the deploy skill updated together.
+- **Exit:** CLASHFORGED deploys to its own site, and no Descent screen or string is reachable from it.
 
-## 7. Risks
+## 5. Working across two repositories
+
+- **Porting a fix.** While the histories are close, add the other repository as a remote and `git cherry-pick` the
+  commit, noting `Ported from <repo>@<sha>` in the message. Nothing obliges a port: the engines are allowed to
+  diverge.
+- **Tooling** is copied once and then owned by each repository: the probe harness (`run-helpers`, `browser-launch`),
+  the ElevenLabs client and the perf benches. The paid ElevenLabs cache on this machine stays shared.
+- **The Balance Lab** (`docs/arena/BALANCE-LAB.md`) is CLASHFORGED tooling and is built in the CLASHFORGED
+  repository. Work started before the copy moves there with its branch.
+
+## 6. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Behaviour drift while untangling: the frame order, a stock-match rule or a campaign default changes silently | Oracles after every phase; contract defaults copied from today's code paths, never rewritten; the hook-order test |
-| Phase 6 conflicts with every open branch | The move is a script, regenerated on the latest main; announce a freeze window; merge open work first |
-| HMR reloads probe pages while files move | Probe batches run against a frozen worktree server (PROBE-HEALTH) |
-| Descent players lose saves | Keys unchanged; fighter fields read and dropped; a test loads a recorded pre-split save |
-| Both apps share `localStorage` in dev | App-scoped storage namespace (4.7) in Phase 5, before two entries exist |
-| Bundle layering regresses (world chunk, lazy Builder) | `bundle-layers.test.ts` and `verify:builder-bundle` carried over per app |
-| The repo rename breaks Descent's GitHub Pages links | Last step; `alchemists-descent.pages.dev` stays the main URL; README and links updated in the same change |
-| Untracked local art (the 986 MB sprite library) | Kept outside every worktree at `Y:\Projects\alchemists-descent-worktrees\sprite-library` (moved there 2026-10-04), so no worktree removal or file move can touch it |
+| Open branches during the copy | Land them first, or push them to the new repository afterwards (the histories are shared) |
+| Behaviour drifts while code is deleted | Oracles and gate probes on every PR in both repositories; delete by reachability (the survey), not by judgement |
+| Descent players lose a save or profile | Keys unchanged; the fighter field is read and dropped; a test loads a recorded pre-split save |
+| The new repository's workflows fire on its first push | Actions disabled on it until Phase 4 |
+| A secret or variable is missing in the new repository | Phase 4 adds `AUTHORLINK_URL` and the Cloudflare credentials; no relay token in a public build |
+| A bug fixed in one repository lives on in the other | Accepted (D1); port it while the histories are close |
+| The untracked sprite library is lost | It moves by hand in Phase 1 and stays ignored |
 
-## 8. Out of scope
+## 7. Open questions (recommendation first)
 
-- Online (non-LAN) Duel hosting. D5 leaves room for it as a Durable Object; it is its own project.
+- **The AuthorLink relay for CLASHFORGED:** its own worker on the Ajar Red account (recommended), because the
+  protocol and tuning ranges will diverge; or share Descent's relay, with both origins allowlisted.
+- **CLASHFORGED's dev port:** 5175 (recommended), so both dev servers can run side by side.
+- **CLASHFORGED's visibility:** private until it launches, then decide.
+
+## 8. The superseded monorepo plan
+
+The first version of this plan (PR #20) kept one repository: a pnpm monorepo with shared `engine`, `fighters`,
+`ui-kit` and `authoring` packages.
+
+- **It needed the engine to stop naming either game.** That meant neutral actor contracts in place of the 193 arena
+  calls, a `GameKernel` with game modules in place of `Game.ts`, registries for levels, render layers, audio, input
+  and enemies, and a `Ctx` split by declaration merging. Its boundary ratchet started at 204 forbidden imports.
+- **It was dropped (D1)** once it was clear that the two engines will diverge. That work would have bought a shared
+  engine neither game wants.
+- **Phase 0 carried over:** the oracles, the gate probes and the import survey, now the pruning map. The ratchet test
+  did not, because it enforced the monorepo's package layout.
+
+The full text is in git at `e81d94e`.
+
+## 9. Out of scope
+
+- Online (non-LAN) Duel hosting: a Durable Object later, as its own project.
 - New arena features: match modes, more fighters, bots beyond today's.
-- Turborepo or other build caching (D7), until CI time asks for it.
-- Moving `noita-sandbox.html` and the other root reference files. They stay at the root as the port reference.
+- The root port references (`noita-sandbox.html` and friends): Descent keeps them; CLASHFORGED may delete them.

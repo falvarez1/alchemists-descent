@@ -194,3 +194,36 @@ under them, and a long batch belongs on a frozen worktree server):
 `verify-fighter-arena` (65) and `verify-fighter-framework` (28) were updated for the renamed Reset button and the Body-scaled health.
 `verify-title-menu` (237) allows seven rows in the authoring build (the Duel door). The measurement tools are not probes: `fight-batch`,
 `fight-analyse` (writes `report.md` and `report.html`), `fight-tune`, `fight-dps`, `loadout-lab`: see `docs/arena/TELEMETRY-AND-BALANCE.md` 9.
+
+## 2026-10-04: the split's gate probes (docs/split/SPLIT-PLAN.md)
+
+Fifteen probes are the gate every split phase must keep green: `node scripts/split/gate-probes.mjs descent|clashforged
+<url>` runs them one at a time and writes each log to `verify-out/split/gates/`. On a frozen server at the Phase 0
+baseline, the first batch failed six. Five were stale probes, not the game, and are repaired:
+
+- `verify-stock-match` read the Training panel 350 ms after a draw. The panel redraws every 6th animation frame, which
+  a loaded headless browser stretches past that. It now asserts the draw on the match, then waits for the panel.
+- `verify-duel-ui` timed WINS and the results card from its own clock. The HUD times them from the frame it shows
+  GAME!, so a slow frame counted twice. It now measures from the GAME! beat.
+- `verify-fighter-roster-play` counted Sable's drawables after 1.5 s of live play on the new floor, where her passive
+  rightly mounts fresh ones for that floor's foes. It now counts them at the `levelChanged` that clears them.
+- `verify-title-menu` expected Arena before Duel. `dff9d1a` moved the Duel door out of the authoring-only block,
+  ahead of Arena.
+- `verify-run-lifecycle` had three problems:
+  - it clicked the death card's button before its staged fade-in enabled it (disabled until then, on purpose);
+  - it clicked the victory ledger's Title button at an off-screen point (at 1600x900 the ledger is taller than the
+    view and its action row scrolls);
+  - it looked for the player build's Workshop door on an authoring build.
+
+  It now waits for an enabled control, scrolls to it as a player would, and checks the profile's unlock. It also
+  names the condition a wait never met.
+
+The sixth, `verify:findability` (seed 5: `verify-findability` on d3b in CI, `verify-encounter-lairs` on d4 here), fails
+on some runs and not others because it audits a running sim against the wall clock. Its fix is in progress.
+
+`verify-sim-determinism` (an oracle, not a gate) had been stale since the title menu: it started its run through a
+Play button the menu hides. The console starts it now, and it prints the absolute cell-sim hash
+(`ORACLE cell-sim ...`) that `scripts/split/oracles.mjs` records.
+
+The victory ledger's action row sitting below the fold at 1600x900 is a UX note, not a probe bug: a player has to
+scroll the ledger to reach Title.

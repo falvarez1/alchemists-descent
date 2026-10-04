@@ -126,11 +126,13 @@ dev server. `scripts/verify-*.mjs` show the pattern.
   MOVE, it keeps its id (`tests/builder-shell-markup.test.ts`). The Builder owns the terrain while open:
   a document with none captures the live grid on save/validate/play, and opening over a changed Sandbox
   asks which copy to edit. See `docs/BUILDER-STUDIO.md`.
-- **The repo is splitting into two games** (docs/split/SPLIT-PLAN.md): CLASHFORGED (the Duel) and Descent (the campaign,
-  without the arena), in a pnpm monorepo with shared `engine`, `fighters`, `ui-kit` and `authoring` packages. Until the
-  move, do not ADD imports that cross the planned boundaries (engine code naming the campaign or the arena, the Builder
-  naming campaign content, campaign code naming fighters/Duel): `node scripts/split/survey.mjs` counts them, and the
-  count may only go down.
+- **The repo is about to be copied into two games** (docs/split/SPLIT-PLAN.md). CLASHFORGED (the Duel) gets a copy of
+  this repository with its full history (`falvarez1/clashforged`) and deletes the campaign; Descent stays here and
+  deletes the arena. From then on each evolves its own engine. Until the copy, do not add new couplings between the
+  arena and the campaign: each one is work both repos then have to undo. `node scripts/split/survey.mjs` measures it
+  (`scripts/split/ownership.mjs` is the pruning map: what every module is). Every split phase leaves
+  `node scripts/split/oracles.mjs check <url>` (sim + cell-sim hashes, gen golden, 19 seeded stock matches) identical
+  and `node scripts/split/gate-probes.mjs descent|clashforged <url>` green, both against a FROZEN worktree's dev server.
 - **Fighters are for the ARENA mode, not the campaign** (`src/fighters/`, docs/FIGHTERS.md): ten, each a look, a passive,
   a tactical (Z) and an ultimate (T). The campaign is the classic Alchemist only; the title's Arena door (authoring
   builds) starts the Proving Yard (`world/fighterArena`, level `fighter-test`, `ui/FighterArenaPanel`), the test
@@ -252,7 +254,7 @@ loops degrade criteria progressively, never silently skip.
 ## Where to look
 
 - `ARCHITECTURE.md` — module map, frame-order contract, design decisions
-- `docs/split/SPLIT-PLAN.md` — the two-game split: decisions, measured boundary, seams, phases
+- `docs/split/SPLIT-PLAN.md` — the two-game split into two repositories: decisions, what each repo deletes, phases
 - `.claude/skills/indie-game-dev/SKILL.md` — step-by-step content checklists (new material /
   enemy / spell card / biome / pickup) and the full verification playbook
 - `docs/DESIGN.md` — canonical game design; `docs/FEEL.md` — every mechanic/micro-animation

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// THE SPLIT'S GATE PROBES (docs/split/SPLIT-PLAN.md, Phase 0): the runtime probes both games must keep green through
-// every phase. Runs them one at a time (they are CPU-heavy and some time out under load) and summarises.
+// THE SPLIT'S GATE PROBES (docs/split/SPLIT-PLAN.md, section 3): the runtime probes each game must keep green through
+// every phase (after the copy, each repository runs its own list). Runs them one at a time (they are CPU-heavy and
+// some time out under load) and summarises.
 //
 //   node scripts/split/gate-probes.mjs [descent|clashforged|all] [url] [--only verify-x,verify-y]
 //

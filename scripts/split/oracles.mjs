@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// THE SPLIT'S BEHAVIOUR ORACLES (docs/split/SPLIT-PLAN.md, section 6): numbers that must come out the same after
-// every phase of the untangling, because every phase is meant to move code, not change what it does.
+// THE SPLIT'S BEHAVIOUR ORACLES (docs/split/SPLIT-PLAN.md, section 3): numbers that must come out the same after every
+// phase of the split, because deleting the other game's code must not change what this game does. After the copy,
+// Descent keeps sim, cellSim and genGolden; CLASHFORGED keeps sim and duels (its campaign, cave generator included, goes).
 //
 //   node scripts/split/oracles.mjs record [url]   measure, and write scripts/split/oracles.json
 //   node scripts/split/oracles.mjs check  [url]   measure again and compare (exit 1 on any difference)

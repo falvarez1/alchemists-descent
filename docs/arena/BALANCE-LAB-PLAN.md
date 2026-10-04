@@ -20,7 +20,7 @@ Ids are stable (`BL<phase>.<n>`). `TASKS.md` P8 tracks them; update the box in t
 | **M3. New moves** | 4 | Author character-specific moves, chains and specials in the Move Lab; frame-step them with hitboxes drawn; the KO calculator and combo finder answer at once; the CPU uses every new move | about 4 weeks |
 | **M4. Understand** | 5 | Replay any match from any run with a timeline of blows, shields, KOs and what each CPU was thinking; drill from a matchup cell to its matches | about 1 week |
 | **M5. Automate** | rest of 6 | Smoke gate on pull requests that touch fighters; the nightly full matrix; baseline promotion; sensitivity sweeps; identity checks | about 1.5 weeks |
-| Later | 7 | Headless kernel (after the split), human match telemetry, a hosted Lab | |
+| Later | 7 | Headless kernel (in the CLASHFORGED repository), human match telemetry, a hosted Lab | |
 
 M2 is the point where attribute work becomes safe. M3 is the point where new moves become safe. If time is short, build
 M1 and M2 first, then BL3.3 (the combo finder) before any chained moves.
@@ -508,8 +508,9 @@ art is listed, not silent.
 
 ## Phase 7. Later
 
-- **BL7.1 The headless kernel runner (XL, after split phases 1-3).** Matches run in Node worker threads with no browser,
-  using the engine package with no DOM. Target: 5-10 times the throughput, so the full matrix is a pre-merge check.
+- **BL7.1 The headless kernel runner (XL, in the CLASHFORGED repository once its own composition root has replaced
+  `Game.ts`: split phase 3).** Matches run in Node worker threads with no browser, using an engine build with no DOM.
+  Target: 5-10 times the throughput, so the full matrix is a pre-merge check.
 - **BL7.2 Human match telemetry (M).** The live Duel writes v2 records (dev builds, opt-in). The Lab shows human against
   CPU usage and matchup tables once there are enough matches.
 - **BL7.3 A hosted Lab (L).** Runs and drafts shared through the AuthorLink relay, per the original Tuning Lab idea.
@@ -532,7 +533,7 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 | **The CPU is the instrument.** A CPU weakness reads as a fighter weakness. | The behaviour gate in every layer; coverage; skill-gap tracking; the baseline is re-run after any CPU change; L5 human data when it exists |
 | **Noise is read as signal.** Seeds alone move a fighter about 10 points at 72 matches. | Intervals everywhere; significance on every delta; early stopping that needs evidence; enough seeds per decision; never tune on one run |
 | **Scope.** Ten screens and a moveset engine is a lot. | The milestones are independently useful. M1 and M2 alone make attribute work safe. |
-| **The split moves files under this work.** | Isolated folders (design section 4); the move script carries them; split phase 6 is announced and Lab branches merge first |
+| **The repository is copied in two under this work.** | The Lab is built in the CLASHFORGED repository; a Lab branch started before the copy is pushed there (the histories are shared) |
 | **JSON sheets lose TypeScript comments that document numbers.** | A `notes` field per section in the sheet; the schema module documents each field; the editor shows field help from it |
 | **Batches are slow until the headless kernel.** | Early stopping; smoke before full; a cache of runs by spec hash, so an identical spec is never re-run |
 | **A frozen build drifts from the source being edited.** | Builds are keyed by content hash and recorded in every run; the Lab shows "this run played build X, your source is now Y" |
