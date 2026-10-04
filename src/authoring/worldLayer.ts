@@ -28,6 +28,12 @@ import { dressWalkSurface } from '@/world/surfaceDress';
  * only genuine differences — blood, burn scars, authored accents — travel as
  * sparse overrides. A 1600x1064 cave world costs ~75 KB on the wire that way.
  *
+ * KNOWN DRIFT (measured 2026-10-04): the generator has since grown passes
+ * this repaint does not replay (rock consolidation/de-speckle fills shade
+ * rock by the PRE-fill air distance, walk-surface dressing, ground cover), so
+ * ~1.19M of 1.34M wall cells differ, the sparse diff overflows SPARSE_CAP and
+ * the whole color plane ships: ~9.2 MB per layer instead of ~75 KB.
+ *
  * The functions take a narrow surface rather than `Ctx` so the neutral layer
  * stays free of runtime services (boundary-enforced).
  */

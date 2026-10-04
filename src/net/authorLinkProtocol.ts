@@ -197,7 +197,12 @@ export interface WorldAnnouncePayload {
   role?: AuthorLinkRole;
 }
 
-/** "Send me your grid." Answered by exactly one peer — the one that owns `target`. */
+/**
+ * "Send me your grid." Answered by exactly one peer — the one that owns
+ * `target` — first with a `world.announce` (a fast "I am on it", which the
+ * requester's answer deadline waits for), then with the `world.snapshot`,
+ * which may take minutes to reach a starved window (app/authorLinkPull.ts).
+ */
 export interface WorldRequestPayload {
   /** Client id being asked, so three open windows do not all answer at once. */
   target: string;
@@ -206,9 +211,11 @@ export interface WorldRequestPayload {
 /**
  * A whole world on the wire.
  *
- * `EditorWorldLayer` is reused rather than inventing a second grid format: it
- * already solves the expensive part (colors are re-derived from the paint seed
- * instead of shipped, so a cave world is ~75 KB rather than ~6.6 MB).
+ * `EditorWorldLayer` is reused rather than inventing a second grid format. It
+ * was designed to re-derive colors from the paint seed (~75 KB for a cave
+ * world), but the repaint no longer reproduces the generator's later passes,
+ * so today a generated cave falls back to the whole color plane: ~9.2 MB
+ * (measured 2026-10-04, earthen seed 222222).
  */
 export interface WorldSnapshotPayload {
   world: WorldIdentity;
@@ -363,9 +370,9 @@ export const MAX_MESSAGE_BYTES = 512 * 1024;
 /**
  * Ceiling for `world.snapshot`, which is deliberately allowed to be large.
  *
- * A generated cave world is ~75 KB thanks to paint-seed color reconstruction,
- * but a heavily-scarred or hand-painted world falls back to shipping the whole
- * color plane, which is ~9 MB of base64. That is a rare, explicit, one-shot
+ * Paint-seed color reconstruction was meant to keep a cave world ~75 KB, but
+ * any world the repaint cannot reproduce — today that includes every freshly
+ * generated cave — ships the whole color plane, ~9 MB of base64. That is a rare, explicit, one-shot
  * user action, so it gets room rather than a mysterious failure.
  */
 export const MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;

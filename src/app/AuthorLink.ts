@@ -28,6 +28,7 @@ import {
   type WorldIdentity,
 } from '@/net/authorLinkProtocol';
 import { AuthoredObjectSync, isAuthoredSet } from '@/app/authorLinkObjects';
+import { PendingWorldPull, type PullOutcome } from '@/app/authorLinkPull';
 import type { AuthoredSet } from '@/app/authorLinkObjects';
 import {
   applyTuningChanges,
@@ -718,9 +719,15 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
 
   /* -------------------- world channel -------------------- */
 
+  /** The one outstanding pull, if any (see authorLinkPull.ts for its phases). */
+  let pendingPull: PendingWorldPull | null = null;
+
   disposers.push(
     client.on('world.announce', (message) => {
       if (!isWorldIdentity(message.payload.world)) return;
+      // The pull target answers a request with an announce before it starts
+      // the (possibly minutes-long) snapshot transfer: the grid is coming.
+      if (pendingPull?.heardFrom(message.clientId)) ctx.events.emit('toast', { text: 'LINK: RECEIVING WORLD…' });
       // Reply ONLY to a peer we have not met. Answering every announcement is
       // an infinite loop — each reply is itself an announcement — which pins
       // the relay at its rate limit and starves the tuning and cell channels.
@@ -742,6 +749,7 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       // When the room shrinks below what we are tracking, drop everything and
       // re-handshake: a stale entry for a closed window would otherwise show a
       // permanent phantom mismatch that no amount of syncing can clear.
+      if (message.payload.peers === 0) pendingPull?.fail('peer-left'); // nobody left to answer it
       if (message.payload.peers >= peerWorlds.size) return;
       peerWorlds.clear();
       emitWorldState();
@@ -752,6 +760,11 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
   disposers.push(
     client.on('world.request', (message) => {
       if (message.payload.target !== client.clientId) return;
+      // Answer first, with something tiny: the snapshot can take minutes to
+      // reach a starved window, and the requester tells "slow" from "nobody
+      // is answering" by this announce, which travels ahead of it on the same
+      // ordered socket.
+      announceWorld();
       const paintSeed = ctx.worldgen?.paintSeed;
       const layer = captureWorldLayer({
         world: ctx.world,
@@ -767,11 +780,10 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
     }),
   );
 
-  let pendingPull: { resolve: (ok: boolean) => void; timer: ReturnType<typeof setTimeout> } | null = null;
-
   disposers.push(
     client.on('world.snapshot', (message) => {
-      if (!pendingPull) return; // unsolicited grids are never applied
+      const pull = pendingPull;
+      if (!pull) return; // unsolicited grids are never applied
       if (!isWorldIdentity(message.payload.world)) return;
       const layer = message.payload.layer;
       if (!layer || typeof layer.rle !== 'string') return;
@@ -803,10 +815,7 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
         cells: ctx.world.types.length,
       });
       ctx.events.emit('toast', { text: `LINK: PULLED ${describeWorld(myWorld).toUpperCase()}` });
-      const pull = pendingPull;
-      pendingPull = null;
-      globalThis.clearTimeout(pull.timer);
-      pull.resolve(true);
+      pull.complete();
     }),
   );
 
@@ -827,6 +836,8 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
         // Peer worlds are unknowable while we are offline; claiming otherwise
         // would leave a stale "same world" badge on a dead socket.
         peerWorlds.clear();
+        // Sends while disconnected are dropped, so the snapshot is not coming.
+        pendingPull?.fail('link-lost');
         emitWorldState();
         return;
       }
@@ -899,27 +910,33 @@ export function installAuthorLink(ctx: Ctx, config: AuthorLinkConfig): AuthorLin
       if (!client.send('world.request', { target })) return Promise.resolve(false);
       ctx.events.emit('toast', { text: 'LINK: PULLING WORLD…' });
       return new Promise<boolean>((resolve) => {
-        const timer = globalThis.setTimeout(() => {
+        pendingPull = new PendingWorldPull(target, (outcome) => {
           pendingPull = null;
-          ctx.events.emit('toast', { text: 'LINK: WORLD PULL TIMED OUT' });
-          resolve(false);
-        }, 20_000);
-        pendingPull = { resolve, timer };
+          const failure = PULL_FAILURE_TOASTS[outcome];
+          if (failure) ctx.events.emit('toast', { text: failure });
+          resolve(outcome === 'pulled');
+        });
       });
     },
     dispose(): void {
       if (publishTimer !== null) globalThis.clearTimeout(publishTimer);
-      if (pendingPull) {
-        globalThis.clearTimeout(pendingPull.timer);
-        pendingPull.resolve(false);
-        pendingPull = null;
-      }
+      pendingPull?.fail('cancelled');
       worldStateHandlers.clear();
       for (const dispose of disposers.splice(0).reverse()) dispose();
       client.dispose();
     },
   };
 }
+
+/** What the user is told when a pull ends without a grid; null says nothing. */
+const PULL_FAILURE_TOASTS: Record<PullOutcome, string | null> = {
+  pulled: null,
+  'no-answer': 'LINK: WORLD PULL TIMED OUT — THE PEER DID NOT ANSWER',
+  stalled: 'LINK: WORLD PULL TIMED OUT',
+  'link-lost': 'LINK: WORLD PULL LOST — LINK DROPPED',
+  'peer-left': 'LINK: WORLD PULL LOST — THE PEER LEFT',
+  cancelled: null,
+};
 
 /** Client ids are `${role}-${rand}`; the prefix is the BOOT-TIME role, used only when an announce carries none. */
 function roleFromClientId(clientId: string): AuthorLinkRole {

@@ -1,0 +1,223 @@
+{
+  "recordedAt": "2026-10-04T19:09:48.344Z",
+  "git": "6d900ae",
+  "url": "http://localhost:5191/",
+  "sim": {
+    "size": "800x480",
+    "ticks": 160,
+    "state": "58fff223"
+  },
+  "cellSim": {
+    "seed": 20260727,
+    "ticks": 240,
+    "planes": "7738daa3",
+    "draws": {
+      "sim": 3351380,
+      "entity": 0,
+      "particle": 0,
+      "fx": 354546
+    }
+  },
+  "genGolden": {
+    "passed": true
+  },
+  "duels": {
+    "pairs": "ilyra-voss,brann-rook;brann-rook,sable-fen;sable-fen,mara-quell;mara-quell,kest-rel;kest-rel,nox-calder;nox-calder,edda-morrow;edda-morrow,selene-wraith;selene-wraith,rusk-emberjaw;rusk-emberjaw,father-thorne;father-thorne,ilyra-voss",
+    "exact": {
+      "0:ilyra-voss-brann-rook@foundry#9101": {
+        "winner": "ilyra-voss",
+        "ticks": 4174,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "1:brann-rook-ilyra-voss@kiln#9117": {
+        "winner": "ilyra-voss",
+        "ticks": 3920,
+        "stocks": [
+          0,
+          2
+        ],
+        "reason": "stocks"
+      },
+      "2:brann-rook-sable-fen@cistern#9119": {
+        "winner": "brann-rook",
+        "ticks": 6288,
+        "stocks": [
+          2,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "3:sable-fen-brann-rook@gallery#9135": {
+        "winner": "sable-fen",
+        "ticks": 9702,
+        "stocks": [
+          3,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "4:sable-fen-mara-quell@foundry#9137": {
+        "winner": "mara-quell",
+        "ticks": 11573,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "5:mara-quell-sable-fen@kiln#9153": {
+        "winner": "sable-fen",
+        "ticks": 5906,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "6:mara-quell-kest-rel@cistern#9155": {
+        "winner": "mara-quell",
+        "ticks": 5512,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "7:kest-rel-mara-quell@gallery#9171": {
+        "winner": "mara-quell",
+        "ticks": 8367,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "9:nox-calder-kest-rel@kiln#9189": {
+        "winner": "nox-calder",
+        "ticks": 3938,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "8:kest-rel-nox-calder@foundry#9173": {
+        "winner": "kest-rel",
+        "ticks": 8480,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "10:nox-calder-edda-morrow@cistern#9191": {
+        "winner": "nox-calder",
+        "ticks": 5439,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "12:edda-morrow-selene-wraith@foundry#9209": {
+        "winner": "edda-morrow",
+        "ticks": 6283,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "11:edda-morrow-nox-calder@gallery#9207": {
+        "winner": "nox-calder",
+        "ticks": 11558,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "13:selene-wraith-edda-morrow@kiln#9225": {
+        "winner": "edda-morrow",
+        "ticks": 4812,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "14:selene-wraith-rusk-emberjaw@cistern#9227": {
+        "winner": "rusk-emberjaw",
+        "ticks": 4922,
+        "stocks": [
+          0,
+          2
+        ],
+        "reason": "stocks"
+      },
+      "15:rusk-emberjaw-selene-wraith@gallery#9243": {
+        "winner": "rusk-emberjaw",
+        "ticks": 4783,
+        "stocks": [
+          2,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "17:father-thorne-rusk-emberjaw@kiln#9261": {
+        "winner": "father-thorne",
+        "ticks": 6724,
+        "stocks": [
+          1,
+          0
+        ],
+        "reason": "stocks"
+      },
+      "16:rusk-emberjaw-father-thorne@foundry#9245": {
+        "winner": "father-thorne",
+        "ticks": 13847,
+        "stocks": [
+          0,
+          1
+        ],
+        "reason": "stocks"
+      },
+      "18:father-thorne-ilyra-voss@cistern#9253": {
+        "winner": "father-thorne",
+        "ticks": 3627,
+        "stocks": [
+          2,
+          0
+        ],
+        "reason": "stocks"
+      }
+    },
+    "winnerOnly": {
+      "19:ilyra-voss-father-thorne@gallery#9109": {
+        "winner": "father-thorne",
+        "first": {
+          "winner": "father-thorne",
+          "ticks": 5129,
+          "stocks": [
+            0,
+            1
+          ],
+          "reason": "stocks"
+        },
+        "second": {
+          "winner": "father-thorne",
+          "ticks": 8805,
+          "stocks": [
+            0,
+            2
+          ],
+          "reason": "stocks"
+        }
+      }
+    }
+  }
+}

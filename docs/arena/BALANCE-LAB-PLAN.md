@@ -19,25 +19,25 @@ Ids are stable (`BL<phase>.<n>`). `TASKS.md` P8 tracks them; update the box in t
 - stale-move negation as a match rule, on by default;
 - self-contained runs and local drafts;
 - strict CI gates with waivers;
-- **the Lab starts after the CLASHFORGED split**.
+- **the Lab is built in the CLASHFORGED repository, from the day the split copies it out** (split phase 1).
 
 ## Before the Lab
 
-### What the split must deliver
+### What the Lab needs from the split
 
-The Lab's first package starts when the split (`docs/split/SPLIT-PLAN.md`) has reached at least its phase 6 (the
-physical move). It needs:
+The split (`docs/split/SPLIT-PLAN.md`) copies this repository in two: CLASHFORGED gets a copy with the full history and
+keeps the arena, and Descent deletes it. The Lab's first package starts the day that copy lands (split phase 1). It
+needs:
 
-1. **`packages/fighters`**: the roster, bodies, kits, loadouts and `FighterSystem`, where the sheets and the analyser
-   will live.
-2. **`apps/clashforged`** with its own dev entry points (the Lab adds `lab.html` beside the app's `index.html` and
-   `builder.html`) and the app's Vite config and `__AUTHORING__` gate.
-3. **The boundary test** (`tools/shared/split/survey.mjs` as a test) and pnpm's strict resolution, so Lab code cannot
-   reach into Descent.
-4. **The arena code in `apps/clashforged`** (`ArenaSlots`, the stock rules, the CPU, the harness), where the moveset
-   engine work (Phase 4) happens.
-5. **Ideally, a game kernel that can run a match with no DOM, WebGL or audio** (split phases 1-3: the kernel, the
-   actor-slot runtime, the `Ctx` split). It is not required; BL0.5 measures whether it exists and what it gives.
+1. **The CLASHFORGED repository**, in this repository's layout: the fighters (`src/fighters/`, `src/content/fighters*`),
+   where the sheets and the analyser will live; the arena code (`ArenaSlots`, the stock rules, the CPU, the harness),
+   where the moveset engine work (Phase 4) happens; its Vite config, where the Lab adds `lab.html` beside `index.html`
+   and `builder.html`; and the `__AUTHORING__` gate.
+2. **Nothing else to start.** The campaign code is still there until split phase 3 deletes it. Lab code imports only the
+   fighters, the arena, telemetry, config and the engine, so that deletion does not touch it.
+3. **Ideally, a composition root that can run a match with no DOM, WebGL or audio.** Split phase 3 writes CLASHFORGED's
+   own `Game` and should aim for it. It is not required; BL0.5 measures whether it exists and what it gives, and is
+   re-run after phase 3 if it was blocked.
 
 ### Until then: the interim routine
 
@@ -52,17 +52,16 @@ New moves and attribute changes keep landing before the Lab exists. Guard each o
 
 ### Paths
 
-This plan names files by where they live **after the split**:
+The CLASHFORGED repository keeps this repository's layout, so the paths in this plan are the paths the Lab is built
+at. Its new folders:
 
-| Today | After the split |
+| What | Where |
 |---|---|
-| `src/fighters/...`, `src/content/fighters...` | `packages/fighters/src/...` |
-| `src/arena/...`, `src/config/stock*`, `src/input/stockPad.ts` | `apps/clashforged/src/...` |
-| `scripts/duel-*.mjs`, `scripts/verify-stock-*.mjs` | `tools/clashforged/...` |
-| (new) the Lab page | `apps/clashforged/lab/` |
-| (new) the Lab server, runner, store, gates | `tools/clashforged/lab/` |
-
-Where a package below still says `src/...` or `tools/lab/...`, read it through this table.
+| Fighter sheets and their schema | `src/content/fighters/sheets/` |
+| The static analyser | `src/fighters/analysis/` |
+| The Lab page (dev entry only) | `lab.html` at the root, `src/lab/` |
+| The bridge's game side | `src/dev/` |
+| The Lab server, runner, store, gates | `tools/lab/` |
 
 ## Milestones
 
@@ -75,7 +74,7 @@ Where a package below still says `src/...` or `tools/lab/...`, read it through t
 | **M5. Automate** | rest of 6 | The smoke matrix as a required check on pull requests that touch fighters, moves or the arena; the nightly full matrix blocking releases; baseline promotion; sensitivity sweeps; identity checks | about 1.5 weeks |
 | Later | 7 | Human match telemetry, a hosted Lab | |
 
-All milestones start after the split's phase 6. M2 is the point where attribute work becomes safe. M3 is the point
+All milestones are built in the CLASHFORGED repository, from the day the split copies it out (split phase 1). M2 is the point where attribute work becomes safe. M3 is the point
 where new moves become safe. If time is short, build M1 and M2 first, then BL3.3 (the combo finder) before any chained
 moves.
 
@@ -146,9 +145,9 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
 
 ### BL0.5 Can a match run without a browser? (M)
 
-- **Goal:** decide, by measurement, whether the runner is built on the split's game kernel running in Node worker
-  threads (no DOM, WebGL or audio) or on headless browser pages (today's harness).
-- **Files:** `tools/clashforged/lab/kernel-spike.mjs`. It boots the engine package and the arena code in a Node worker,
+- **Goal:** decide, by measurement, whether the runner is built on the game running in Node worker threads (no DOM,
+  WebGL or audio) or on headless browser pages (today's harness).
+- **Files:** `tools/lab/kernel-spike.mjs`. It boots the engine and the arena code in a Node worker,
   plays the BL0.3 determinism spec, and compares the record with the browser's.
 - **Measure:**
   - Identical records (the same seed gives the same match in Node as in the browser).
@@ -157,7 +156,8 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
 - **Exit, one of two:**
   - Records match and throughput is at least 3 times the pages: the runner (BL1.2) uses kernel workers, with pages kept
     for anything that renders.
-  - Otherwise, a written list of what blocks it, filed against the split's engine boundary; the runner uses pages.
+  - Otherwise, a written list of what blocks it, filed against CLASHFORGED's composition root (split phase 3); the
+    runner uses pages until it is cleared.
 
 ---
 
@@ -259,16 +259,15 @@ Phase 0 (prep) --> Phase 1 (Lab MVP) --+--> Phase 2 (sheets, drafts, roster) --+
 ### BL2.1 Fighter sheets (L)
 
 - **Goal:** tunables become data (D-L4, D-016, design 5.1).
-- **Files** (in `packages/fighters`):
-  - `src/sheets/<id>.json` (ten), each with `"$schema": "../fighter-sheet.schema.json"` and a `notes` map (field path to
+- **Files** (in `src/content/fighters/`):
+  - `sheets/<id>.json` (ten), each with `"$schema": "../fighter-sheet.schema.json"` and a `notes` map (field path to
     help text) that carries today's explanatory comments.
-  - `src/sheets/types.ts`: the `FighterSheet` TypeScript types, the single source of truth.
-  - `src/sheets/schema.ts`: the runtime validator, with precise error messages and ranges taken from `BODY_RANGES`,
+  - `sheets/types.ts`: the `FighterSheet` TypeScript types, the single source of truth.
+  - `sheets/schema.ts`: the runtime validator, with precise error messages and ranges taken from `BODY_RANGES`,
     `STOCK_ATTACK_RANGES` and `STOCK_BALANCE_RANGES`.
-  - `fighter-sheet.schema.json`: the JSON Schema, generated from the types by
-    `tools/clashforged/gen-sheet-schema.mjs`. A `--check` mode fails CI when it is stale, as `gen:tuning-ranges --check`
-    does today.
-  - `src/sheets/index.ts`: the loader.
+  - `fighter-sheet.schema.json`: the JSON Schema, generated from the types by `scripts/gen-sheet-schema.mjs`. A
+    `--check` mode fails CI when it is stale, as `gen:tuning-ranges --check` does today.
+  - `sheets/index.ts`: the loader.
 - **The tables become views over the sheets, each keeping its export:** `FIGHTER_BODIES`, `STOCK_BALANCE`,
   `STOCK_ATTACKS`, `FIGHTER_LOADOUTS`, `FIGHTER_PERSONALITIES`.
 - **Kit numbers:** BL2.2.
@@ -595,7 +594,8 @@ art is listed, not silent.
 
 - **Workflow (D-020: strict, with waivers):**
   - Every build: the L0 and L1 gates (`tests/balance-static.test.ts` and the sheet-schema `--check`) fail the build.
-  - On pull requests touching `packages/fighters/` or the arena, move or stock-rule code in `apps/clashforged/`:
+  - On pull requests touching the fighters (`src/fighters/`, `src/content/fighters*`) or the arena, move or stock-rule
+    code:
     `balance:smoke` is a **required check**. Its summary is the job summary; a fail-level gate blocks the merge.
   - Nightly, scheduled: `balance:full`; artifacts uploaded. A fail-level gate opens an issue and **blocks releases**
     (the release workflow reads the last nightly result) until fixed or waived.
@@ -657,7 +657,7 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 | **The CPU is the instrument.** A CPU weakness reads as a fighter weakness. | The behaviour gate in every layer; coverage; skill-gap tracking; the baseline is re-run after any CPU change; L5 human data when it exists |
 | **Noise is read as signal.** Seeds alone move a fighter about 10 points at 72 matches. | Intervals everywhere; significance on every delta; early stopping that needs evidence; enough seeds per decision; never tune on one run |
 | **Scope.** Ten screens and a moveset engine is a lot. | The milestones are independently useful. M1 and M2 alone make attribute work safe. |
-| **The split slips, and balance tooling waits with it** (D-021). | The interim routine ("Before the Lab") after every fighter change; the split's phases are the Lab's critical path, so its progress is tracked here; the Lab starts the day phase 6 lands |
+| **The copy slips, and balance tooling waits with it** (D-021). | The interim routine ("Before the Lab") after every fighter change; the copy is the split's first, short step and the Lab's only dependency; the Lab starts the day it lands |
 | **JSON sheets lose TypeScript comments that document numbers.** | The `notes` map in each sheet (field path to help text) carries them; the generated JSON Schema carries the type documentation into editors; the Lab shows both as field help |
 | **Batches are slow on pages** (the official setup doubles them: two CPU levels). | BL0.5 measures the kernel route first; early stopping; smoke before full; a cache of runs by spec hash, so an identical spec is never re-run |
 | **Required CI checks feel heavy.** | Deterministic seeds and frozen builds (no flaky failures); the smoke runs only on fighter, move and arena changes; waivers are the explicit, reviewed escape hatch |
@@ -665,9 +665,9 @@ Probes click with real mouse events (CLAUDE.md), run against a frozen build, and
 
 ## First steps
 
-**Now, before the split:** the interim routine after every fighter change. Nothing of the Lab is built yet.
+**Now, before the copy:** the interim routine after every fighter change. Nothing of the Lab is built yet.
 
-**The day the split's phase 6 lands:**
+**The day the split copies CLASHFORGED out (split phase 1), in the new repository:**
 
 1. BL0.1 and BL0.4: register every root at boot; write the balance store from `confirm-final` and pass 1.
 2. BL0.3 and BL0.5: prove determinism, and measure whether a match runs without a browser. This decides the runner.

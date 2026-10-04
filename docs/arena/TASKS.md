@@ -83,12 +83,12 @@ and the decision log refer to it. Update the box in the same commit as the work.
 - [ ] V7.2 `scripts/fight-tune.mjs` (interleaved A/B, a `balance-patch.json` with evidence, +-15% per round)
 - [ ] V7.3 the fight-review overlay in the Yard (timeline, ghosts, damage graph, heatmap) (stock matches: BL5.2-5.3)
 - [ ] V7.4 balance passes until the targets hold; every pass writes `docs/fighters/balance/pass-NN.md`
-- [ ] V7.5 optional: a Node `HeadlessGame` for parallel bulk runs (BL7.1, after the split)
+- [ ] V7.5 optional: a Node `HeadlessGame` for parallel bulk runs (BL7.1, in the CLASHFORGED repository)
 
 ## P8: the Balance Lab (`BALANCE-LAB.md`, `BALANCE-LAB-PLAN.md`)
 
 Milestones: M1 see and run (BL0, BL1), M2 edit safely (BL2, BL3, BL6.2), M3 new moves (BL4), M4 understand (BL5), M5 automate (BL6).
-**Starts after the CLASHFORGED split reaches its phase 6** (D-021); decisions D-014 to D-021 shape every package. Until
+**Starts in the CLASHFORGED repository the day the split copies it out** (split phase 1; D-021 as revised); decisions D-014 to D-021 shape every package. Until
 then, every fighter change follows the interim routine in `BALANCE-LAB-PLAN.md` ("Before the Lab").
 
 - [ ] BL0.1 every knob registered at boot (`fighters/tuningRoots.ts`)

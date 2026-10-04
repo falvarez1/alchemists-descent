@@ -71,14 +71,21 @@ for (const id of ids.filter((i) => !only || only.includes(i))) {
 
   // A floor change: the fighter stays, what the kit placed is cleared.
   const before = await page.evaluate(() => ({ id: window.__game.ctx.fighters.id, charge: window.__game.ctx.fighters.view.ultimate.charge }));
-  await page.evaluate(() => { window.__game.ctx.state.paused = false; });
+  // Read the drawables AT the change (this listener runs after the system's own, which clears synchronously): over
+  // the next live second a passive may mount fresh ones for the new floor's foes (Sable senses them), which is not
+  // what "cleared" means.
+  await page.evaluate(() => {
+    const c = window.__game.ctx;
+    window.__atChange = null;
+    const off = c.events.on('levelChanged', () => { window.__atChange = { drawables: c.fighters.drawables.length, owns: c.fighters.ownsMovement }; off(); });
+    c.state.paused = false;
+  });
   await execConsoleCommand(page, 'goto d2', { rejectOnError: false });
   await page.waitForTimeout(1500);
   await page.evaluate(() => { window.__game.ctx.state.arrivalGraceUntil = 0; window.__game.ctx.state.paused = true; });
   await tick(10);
-  const after = await page.evaluate(() => { const f = window.__game.ctx.fighters; return { id: f.id, level: window.__game.ctx.levels.current?.def.id, drawables: f.drawables.length, owns: f.ownsMovement }; });
-  // (a passive with an always-on layer, Sable's spoor or Mara's ripples, re-mounts its own drawable on the next tick: at most that one remains)
-check(`${id}: a floor change keeps the fighter and clears what it placed`, after.id === id && after.drawables <= 1 && after.owns === false, JSON.stringify(after));
+  const after = await page.evaluate(() => { const f = window.__game.ctx.fighters; return { id: f.id, level: window.__game.ctx.levels.current?.def.id, owns: f.ownsMovement, atChange: window.__atChange }; });
+  check(`${id}: a floor change keeps the fighter and clears what it placed`, after.id === id && after.level === 'd2' && after.atChange?.drawables === 0 && after.atChange.owns === false && after.owns === false, JSON.stringify(after));
   void before;
 
   // Death and respawn.

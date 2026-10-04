@@ -16,7 +16,7 @@ Smash-style mode for this falling-sand world. Start with `MASTER-PLAN.md`.
 | P6a signature loadouts | **built**, chosen with the loadout lab |
 | P5 match rules (stocks, volatility, ring-outs, the collapse), P6b melee primaries, P7 balance passes | planned |
 | Duel CPU close game + CPU vs CPU stock telemetry, Duel balance pass 1 (2026-10-04) | **built and measured** (`AI-STOCK-TACTICS.md`, `STOCK-TELEMETRY.md`) |
-| P8 the Balance Lab (control panel, moveset v3, balance gates) | **planned, after the CLASHFORGED split** (`BALANCE-LAB.md`, `BALANCE-LAB-PLAN.md`; decisions D-014 to D-021) |
+| P8 the Balance Lab (control panel, moveset v3, balance gates) | **planned, in the CLASHFORGED repository once the split copies it out** (`BALANCE-LAB.md`, `BALANCE-LAB-PLAN.md`; decisions D-014 to D-021) |
 
 **See it:** `npm run dev`, the title's Arena door, the panel's *Other stage* button (the Duel Stage), *Add rival*, a brain for each fighter.
 **Measure it:** `node scripts/fight-batch.mjs <url> --pairs all --seeds 3` then `node scripts/fight-analyse.mjs <dir>`; `fight-tune.mjs` turns the

@@ -2,8 +2,8 @@
 
 **Status: design (2026-10-04). Nothing in this document is built yet except what section 1 lists as existing.** The
 implementation plan, phase by phase with files, tests and exit criteria, is `BALANCE-LAB-PLAN.md`. The open decisions
-were settled on 2026-10-04 (section 12; `DECISIONS.md` D-014 to D-021). The main consequence: **the Lab is built
-after the CLASHFORGED split**, directly in the monorepo.
+were settled on 2026-10-04 (section 12; `DECISIONS.md` D-014 to D-021). The main consequence: **the Lab is built in
+the CLASHFORGED repository**, starting the day the split copies it out (split phase 1; D-021 as revised).
 
 The roster is about to grow: character-specific moves, combinations, special skills and attribute changes. Each one can
 make a fighter overpowered without anyone noticing until players do. The Balance Lab is the one place, in dev builds only,
@@ -134,7 +134,7 @@ the Lab, and are read by every gate.
   schema is stale.
 - Comments that document numbers today move to a `notes` map in the sheet (keyed by field path), which the Lab shows
   as field help.
-- One JSON sheet per fighter (`packages/fighters/src/sheets/<id>.json`) holds:
+- One JSON sheet per fighter (`src/content/fighters/sheets/<id>.json`) holds:
   - its body;
   - its Duel levers;
   - its moves;
@@ -175,35 +175,37 @@ the Lab, and are read by every gate.
 - The Lab server is a Vite plugin that exists only in `serve`.
 - `verify:builder-bundle` gains a check that no Lab module reaches a player build.
 
-### Where it lives: after the CLASHFORGED split (decided, D-021)
+### Where it lives: the CLASHFORGED repository (decided, D-021 as revised)
 
-The Lab is built once the split (`docs/split/SPLIT-PLAN.md`) has moved the code into the monorepo, at least through its
-phase 6 (the physical move). It is then built directly where it belongs, with no path churn:
+The split (`docs/split/SPLIT-PLAN.md`) copies this repository in two: CLASHFORGED gets a copy with the full history and
+keeps the arena, and Descent deletes it. The CLASHFORGED repository keeps this repository's layout, so the Lab is built
+there from the day of the copy (split phase 1), directly where it belongs, with no path churn:
 
-| Part | Lives in | Allowed to import |
+| Part | Lives in | Imports |
 |---|---|---|
-| Fighter sheets, the schema, the static analyser (power budget, KO calculator, combo finder) | `packages/fighters` | `engine` |
-| The page (`lab.html`, the screens, the bridge's Lab side) | `apps/clashforged/lab/` (dev entry only) | `engine`, `fighters`, `ui-kit`, `authoring` |
-| The bridge's game side | `apps/clashforged/src/dev/` | the app |
-| The Lab server, runner, store, gates | `tools/clashforged/lab/` | anything (tools drive the apps) |
+| Fighter sheets, the schema | `src/content/fighters/sheets/` | nothing but types |
+| The static analyser (power budget, KO calculator, combo finder) | `src/fighters/analysis/` | the fighters, the stock rules, the engine; no DOM |
+| The page (`lab.html` beside `index.html` and `builder.html`, the screens, the bridge's Lab side) | `src/lab/` (dev entry only) | the fighters, the arena, telemetry, config, the engine, the foundry kit |
+| The bridge's game side | `src/dev/` | the game |
+| The Lab server, runner, store, gates | `tools/lab/` | anything (tools drive the game) |
 
-The analyser lives in `packages/fighters` so that the Lab, the CPU (which reads the link table) and the tests all use one
+The analyser lives beside the fighters so that the Lab, the CPU (which reads the link table) and the tests all use one
 implementation. It must stay free of DOM and browser APIs.
 
-**Consequence: the split now gates balance tooling.** Until the Lab exists:
+**Consequence: the copy gates balance tooling.** It is the split's first, short step. Until it lands:
 - New moves and attribute changes are guarded only by today's tests and the command-line tools.
 - After each change, run `duel-batch` on the pass-1 confirmation spec (`--pairs all --seeds 4 --stage all
   --personality duelist --seed-base 30000`) and `duel-analyse --compare` against that run's report. `confirm-final` is
   in the main checkout's `verify-out/duels/`; the same command re-creates it.
-- The split's own phases decide the Lab's start date. `BALANCE-LAB-PLAN.md` "Before the Lab" lists what the split must
-  deliver for it.
+- The copy decides the Lab's start date. `BALANCE-LAB-PLAN.md` "Before the Lab" lists what the Lab needs from the
+  split.
 
 ## 5. Data model
 
 ### 5.1 The fighter sheet
 
 ```jsonc
-// packages/fighters/src/sheets/rusk-emberjaw.json
+// src/content/fighters/sheets/rusk-emberjaw.json
 {
   "id": "rusk-emberjaw",
   "schema": 1,
@@ -632,9 +634,9 @@ equivalence check prove it.
 
 ## 11. Later
 
-- **The headless kernel: evaluated first, not later.** Because the Lab now starts after the split, the runner is built
-  on the engine package running without a browser (Node worker threads) if the split delivers a kernel that can run a
-  match with no DOM, WebGL or audio. That is an expected 5-10 times the throughput: the L3 matrix becomes minutes and
+- **The headless kernel: evaluated first, not later.** The runner is built on the game running without a browser (Node
+  worker threads) if CLASHFORGED's composition root can run a match with no DOM, WebGL or audio. The split's phase 3
+  writes that root (the Duel's own `Game`), and should aim for this. That is an expected 5-10 times the throughput: the L3 matrix becomes minutes and
   can become a pre-merge check. Headless pages stay as the fallback, and as the path for anything that renders
   (replays, the Move Lab). The plan's BL0.5 makes the call with a measurement.
 - **A hosted Lab.** Share runs and exported drafts across machines through the AuthorLink relay (the original "Tuning
@@ -656,4 +658,4 @@ the reasoning, what was rejected and what would make us revisit each one.
 | D-018 | Stale-move negation? | **A match rule, on by default**; the analyser and the gates measure fresh values, so it never hides a move |
 | D-019 | Drafts and provenance? | **Runs are self-contained** (they embed their complete overrides); drafts are local and git-ignored, exportable to share |
 | D-020 | How strict are the gates in CI? | **Strict, with waivers**: L0 and L1 fail every build; the L2 smoke is a required check on fighter, move and arena changes; the nightly L3 opens an issue and blocks releases; exceptions are written, expiring waivers |
-| D-021 | When is the Lab built? | **After the CLASHFORGED split** (at least its phase 6), directly in the monorepo packages |
+| D-021 | When is the Lab built? | **In the CLASHFORGED repository, from the day the split copies it out** (split phase 1), directly in its final paths. Revised when the split became two repositories; it first said "after the monorepo's phase 6". |

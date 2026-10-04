@@ -171,3 +171,45 @@ choice): no path churn, built once in its final home under the boundary rules. *
 the split; until then every fighter change follows the interim routine in `BALANCE-LAB-PLAN.md` ("Before the Lab").
 **Rejected:** building now in isolated folders (recommended at the time: balance work would proceed sooner); data now and
 the Lab later. **Revisit** if the split stalls for long while new moves keep landing.
+
+**Revised 2026-10-04, the same day: the split became two repositories** (`docs/split/SPLIT-PLAN.md` D1: CLASHFORGED gets
+a copy of this repository with the full history and deletes the campaign; Descent deletes the arena). The monorepo, its
+phase 6 and its packages no longer exist. The decision's reason holds, and is met sooner: the Lab's final home is the
+CLASHFORGED repository, which keeps this repository's layout, so the Lab starts there **the day the copy lands** (split
+phase 1). Its paths, also for D-016's sheets: `src/content/fighters/sheets/` (sheets and schema),
+`src/fighters/analysis/` (the analyser), `lab.html` and `src/lab/` (the page), `src/dev/` (the bridge's game side) and
+`tools/lab/` (server, runner, store, gates). The interim routine applies until then.
+
+## D-022 (2026-10-04): CLASHFORGED is hosted as a Cloudflare Worker with static assets; Descent stays on Pages
+
+**Decision.** CLASHFORGED deploys as one Cloudflare Worker with static assets (Ajar Red account). The same deployment holds
+the static game, the online Duel's room Durable Objects (one per room) and, later, the Containers for server-run matches.
+Its `_headers` file sends COOP/COEP natively. A custom domain, if it gets one, keeps its DNS on Cloudflare. In dev, the
+Cloudflare Vite plugin runs the room code in Cloudflare's runtime inside the app's Vite server, replacing the Node `ws`
+plugin, so the room logic (`servers/duel/Room.ts`) is hosted once. Descent stays on Pages (`alchemists-descent.pages.dev`)
+and GitHub Pages. This revises split decision D5 (`docs/split/SPLIT-PLAN.md`), which had chosen a Pages project; nothing
+had been deployed.
+
+**Why.** For static files Workers and Pages are equivalent (asset requests free, server code at the same rate). An online
+game needs what only Workers has (Cloudflare's Pages-to-Workers compatibility matrix):
+- Durable Objects and Containers **in the same deployment**. With Pages the room server must be a separately deployed
+  Worker bound in production and preview, so the site and the server ship on separate schedules and a new client can meet
+  an old room protocol.
+- The Cloudflare Vite plugin: dev runs the real room code, not a second Node implementation.
+- Gradual deployments: a protocol change can reach a slice of players first.
+- The rate-limiting binding: abuse control on room creation and joins, required before public play (`docs/DUEL-LAN.md`).
+- Workers Logs, Logpush, Tail Workers and source maps: diagnosing production room failures after the fact.
+- Queue consumers: ingesting recorded human matches (the Balance Lab's BL7.2) without touching the match.
+
+Descent is purely static (it needs only the COOP/COEP headers), so moving it would gain nothing.
+
+**Accepted costs.** A custom domain must use Cloudflare nameservers (Pages also accepts a CNAME from outside DNS). Workers'
+branch previews are less configurable than Pages' (custom branch aliases are still "coming soon"). Early Hints need the
+zone setting turned on.
+
+**Rejected:** a Pages project with a separately deployed Durable Object Worker (two deploy units, version skew, no Vite
+plugin); a non-Cloudflare host for the room server (the AuthorLink relay already proves Durable Objects here, and the room
+logic was written to be hosted that way).
+
+**Revisit** if CLASHFORGED needs a domain whose DNS cannot move to Cloudflare, or if Cloudflare closes the gap (Durable
+Objects defined inside Pages projects).

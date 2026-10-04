@@ -238,8 +238,10 @@ try {
       .observe(hud, { attributes: true, subtree: true, attributeFilter: ['hidden', 'data-kind'] });
   });
   check('the match can be finished (a ring-out per stock)', await finish(page) === 'finished');
-  const finishedAt = await page.evaluate(() => performance.now());
-  const game = await page.evaluate(() => ({ banner: document.querySelector('.stock-banner:not([hidden])')?.textContent, card: document.querySelector('.stock-result').hidden }));
+  // The HUD notices the finish on its next animation frame and times WINS and the card from that moment (its own
+  // clock): wait for GAME!, and measure from GAME!'s beat, so a slow frame on a loaded machine is not counted twice.
+  await page.waitForFunction(() => document.querySelector('.stock-banner[data-kind="game"]:not([hidden])'), null, { timeout: 2000 }).catch(() => {});
+  const game =await page.evaluate(() => ({ banner: document.querySelector('.stock-banner:not([hidden])')?.textContent, card: document.querySelector('.stock-result').hidden }));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const escDuringGame = await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null);
@@ -247,10 +249,10 @@ try {
   const wins = await page.locator('.stock-banner').textContent();
   if (shots) await page.screenshot({ path: 'verify-out/duel-ui/4-wins.png' });
   await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 10000 });
-  const timing = await page.evaluate((t0) => {
+  const timing = await page.evaluate(() => {
     const first = (what) => window.__beats.find(b => b.what === what)?.at;
-    return { wins: Math.round(first('wins') - t0), card: Math.round(first('card') - t0) };
-  }, finishedAt);
+    return { wins: Math.round(first('wins') - first('game')), card: Math.round(first('card') - first('game')) };
+  });
   check('GAME! slams in at once with the card held back, then <NAME> WINS (~0.95 s), then the results card (~2.2 s)',
     game.banner === 'Game!' && game.card === true && / wins$/.test(wins ?? '') && Math.abs(timing.wins - 950) < 350 && Math.abs(timing.card - 2200) < 450, JSON.stringify({ game, wins, timing }));
   await page.keyboard.press('Escape');
