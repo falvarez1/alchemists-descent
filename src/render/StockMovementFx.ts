@@ -131,5 +131,13 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       const offset = Math.sin(i * 1.7) * 2;
       dot(p.x + dx * i * 1.5 - dy * offset, p.y - 7 + dy * i * 1.5 + dx * offset, (1 - i / count) * .8);
     }
+    if (!quiet && speed > 5 && arena.isLaunching(arena.bound)) {
+      // Speed lines behind a hard launch: long parallel streaks across the body, longer the faster it flies.
+      const len = Math.min(26, 6 + speed * 1.6);
+      for (let k = -2; k <= 2; k++) {
+        const off = k * 3.2 + Math.sin(ctx.state.frameCount * .9 + k) * .6, start = 6 + Math.abs(k) * 2;
+        for (let s = start; s < start + len; s += .5) dot(p.x + dx * s - dy * off, p.y - 9 + dy * s + dx * off, (1 - (s - start) / len) * .55, true);
+      }
+    }
   }
 }
