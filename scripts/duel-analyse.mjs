@@ -167,6 +167,13 @@ if (Object.keys(A.stages).length > 1) {
   L.push('', '| Stage | Matches | Mean length | KOs/match | Self-KO share |', '|---|---|---|---|---|');
   for (const [s, v] of Object.entries(A.stages)) L.push(`| ${s} | ${v.n} | ${fix(v.ticks / v.n / 60, 0)} s | ${fix(v.kos / v.n)} | ${pct(v.selfKos / Math.max(1, v.kos))} |`);
 }
+const stalls = rows.filter((r) => r.reason !== 'stocks');
+if (stalls.length) {
+  L.push('', '## Matches that reached the clock', '');
+  const pers = run.personality && run.personality !== 'fighter' ? `, personality: '${run.personality}'` : '';
+  for (const r of stalls.slice(0, 20)) L.push(`- ${name(r.sides[0].id)} vs ${name(r.sides[1].id)} on ${r.stage}, seed ${r.spec.seed}: ${r.sides[0].stocks}-${r.sides[1].stocks} stocks, mean spacing ${r.behaviour.meanDist} cells, close range ${pct(r.behaviour.closeShare)} (replay: \`__duel.run({ a: { id: '${r.sides[0].id}'${pers} }, b: { id: '${r.sides[1].id}'${pers} }, seed: ${r.spec.seed}, stage: '${r.stage}', traceEvery: 120, traceStatus: true })\`)`);
+  if (stalls.length > 20) L.push(`- ... and ${stalls.length - 20} more (report.json)`);
+}
 L.push('', '## Tuning', '');
 L.push('Re-run the same jobs with an override and compare: `node scripts/duel-batch.mjs <url> --pairs all --seeds 2 --set stock.<id>.finisher.damage=40 --out verify-out/duels/try` then `node scripts/duel-analyse.mjs verify-out/duels/try --compare ' + dir + '`. Levers: `stock.<id>.<kind>.<field>` (damage, startup, recovery, reach, knockX/Y, growth, stun), `body.<id>.<attr>` (`dealt`, `mass`, speed, jump...). `window.__duel.knobs("stock.")` lists them with ranges.');
 

@@ -4,7 +4,9 @@
 //
 //   node scripts/duel-batch.mjs [url] [--pairs all | a,b;c,d] [--seeds 2] [--level 3] [--a-level N] [--b-level N]
 //        [--stage foundry | all | foundry,kiln] [--personality fighter | duelist | ...] [--pages 2] [--max-ticks N]
-//        [--set path=value ...] [--one-way] [--limit N] [--trace N] [--out verify-out/duels/<run>]
+//        [--set path=value ...] [--one-way] [--limit N] [--trace N] [--seed-base 9100] [--out verify-out/duels/<run>]
+//
+// --seed-base N     where the seeds start (a confirmation run after tuning uses fresh seeds: --seed-base 20000)
 //
 // --pairs all       every ordered pair of the ten (90): each pair runs both sides, so no fighter is only ever on the left
 // --pairs a,b;c,d   the listed pairs (ids), both sides unless --one-way
@@ -38,6 +40,7 @@ const pagesN = Math.max(1, Number(opt('pages', '1')));
 const oneWay = args.includes('--one-way');
 const limit = Number(opt('limit', '0'));
 const traceEvery = Number(opt('trace', '0'));
+const seedBase = Number(opt('seed-base', '9100'));
 const overrides = {};
 for (const kv of all('set')) {
   const [k, v] = kv.split('=');
@@ -64,11 +67,11 @@ else {
 let jobs = [];
 let n = 0;
 for (let s = 0; s < seeds; s++) for (const [a, b] of pairs) {
-  jobs.push({ a, b, seed: 9100 + s * 131 + IDS.indexOf(a) * 17 + IDS.indexOf(b), stage: stages[n++ % stages.length] });
+  jobs.push({ a, b, seed: seedBase + s * 131 + IDS.indexOf(a) * 17 + IDS.indexOf(b), stage: stages[n++ % stages.length] });
 }
 if (limit > 0) jobs = jobs.slice(0, limit);
 jobs.forEach((j, i) => { j.i = i; });
-const header = { runId, git, dirty, url, seeds, level: [aLevel, bLevel], personality, stages, maxTicks, overrides, pairs: pairs.length, jobs: jobs.length, started: new Date().toISOString() };
+const header = { runId, git, dirty, url, seeds, seedBase, level: [aLevel, bLevel], personality, stages, maxTicks, overrides, pairs: pairs.length, jobs: jobs.length, started: new Date().toISOString() };
 writeFileSync(`${out}/run.json`, JSON.stringify(header, null, 2));
 console.log(`duel batch ${runId}: ${jobs.length} stock matches (${pairs.length} pairs x ${seeds} seeds), CPU ${aLevel}/${bLevel}, personality ${personality}, stages ${stages.join('+')}, ${pagesN} page(s), git ${git}${dirty ? '+dirty' : ''}${Object.keys(overrides).length ? `, overrides ${JSON.stringify(overrides)}` : ''}`);
 

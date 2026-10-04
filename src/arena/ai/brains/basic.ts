@@ -503,7 +503,7 @@ export class BasicBrain implements Brain {
     if (control.activeEdge !== null && !control.committed) { control.cancelEdge(); this.edgeTarget = null; }
     // Same surface (or an opponent in the air): stockTactics chooses the footing every tick.
     if (stock) { this.goalX = null; return; }
-    const stage =this.navFor?.startsWith('fighter-stock') ? this.navStage.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
+    const stage = this.navFor?.startsWith('fighter-stock') ? this.navStage.main : this.navFor === 'fighter-duel' ? DUEL : YARD;
     // Upper platforms extend beyond the main deck. Keep ordinary footwork on the
     // surface we occupy; the nav owns movement to another surface.
     const x0 = stock && myNode ? myNode.x0 + PLAYER_HALF_W + 4 : stage.x0 + 16;

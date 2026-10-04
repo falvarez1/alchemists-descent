@@ -26,18 +26,20 @@ Normal) measured **37.8 crossings a minute, 33.6 of them in the air, each fighte
 
 After the rebuild the same seeded bout (`diag-duel-cpu.mjs`, which counts every crossing, respawns included) measures
 3.3 airborne crossings a minute (was 33.6), about 6 voluntary jumps a minute per fighter (was about 45), 29 melee hits in 55
-seconds (was 7), and both fighters throw all four blows. Across the roster (`duel-batch`, 180 matches, every ordered pair
-on all four stages, Normal):
+seconds (was 7), and both fighters throw all four blows. Across the roster (`duel-batch`, 270 matches: every ordered pair
+three times, the four stages round-robin, Normal, one personality for both sides):
 
 | Check | Before (main, 5527cc4) | After |
 | --- | --- | --- |
-| Crossings through each other on one surface | (37.8 a minute, any surface, in the traced bout) | 2.9 a minute |
-| Airborne outside hitstun | about 50% (traced bout) | 22% |
-| Matches reaching the 6-minute clock | 27% (first rebuild, before the ember-wall fix) | 6% |
-| Self-destructs | n/a | 0.04 a match |
-| Median match | n/a | 94 s |
+| Crossings through each other on one surface | 37.8 a minute (any surface, the traced bout) | 2.9 a minute |
+| Airborne outside hitstun | about 50% (the traced bout) | 24% |
+| Matches reaching the 6-minute clock | 27% (the first rebuild) | 0.7% (2 of 270) |
+| Median match | - | 86 s |
 
-The remaining timeouts are matchups where neither can finish (both heavy, or a light fighter kiting); the analyser lists them.
+Two more stalls were found and fixed on the way, both by tracing the batch's timeouts (the analyser lists every one with a
+replay line): a single ember between the fighters became a wall (walking in touched it, stepping out of fire pushed the bot
+back), and one Ice or Ash cell from Edda's frost beside the destination made the walk check call solid deck unsafe, so both
+CPUs froze for minutes (`safeDrop` now allows the body's own step-up).
 
 ## The rules
 

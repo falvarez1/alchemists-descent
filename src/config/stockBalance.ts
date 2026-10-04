@@ -11,6 +11,10 @@ import type { FighterId } from '@/content/fighters';
  *   launch  how far this fighter flies when hit (its KO resistance), on top of its body's mass (which is also its feel).
  *
  * Keep each line `'<id>': { dealt: N, launch: N },` (the tuner reads and writes them by that shape).
+ *
+ * Pass 1 (2026-10-04): from all 1 (Rusk 94%, Brann 67% ... Mara 19% with one personality on both sides), seven tuner rounds
+ * of 270 CPU matches, then confirmation on fresh seeds the tuner never saw (docs/arena/STOCK-TELEMETRY.md, "Measured").
+ * Rusk's finisher and weight carried him: he hits a quarter softer and flies a third further; light, floaty Mara the reverse.
  */
 export interface StockBalance {
   dealt: number;
@@ -18,16 +22,16 @@ export interface StockBalance {
 }
 
 export const STOCK_BALANCE: Record<FighterId, StockBalance> = {
-  'ilyra-voss': { dealt: 1, launch: 1 },
-  'brann-rook': { dealt: 1, launch: 1 },
-  'sable-fen': { dealt: 1, launch: 1 },
-  'mara-quell': { dealt: 1, launch: 1 },
-  'kest-rel': { dealt: 1, launch: 1 },
-  'nox-calder': { dealt: 1, launch: 1 },
-  'edda-morrow': { dealt: 1, launch: 1 },
-  'selene-wraith': { dealt: 1, launch: 1 },
-  'rusk-emberjaw': { dealt: 1, launch: 1 },
-  'father-thorne': { dealt: 1, launch: 1 },
+  'ilyra-voss': { dealt: 0.968, launch: 1.033 },
+  'brann-rook': { dealt: 0.94, launch: 1.064 },
+  'sable-fen': { dealt: 1.12, launch: 0.893 },
+  'mara-quell': { dealt: 1.225, launch: 0.816 },
+  'kest-rel': { dealt: 0.975, launch: 1.026 },
+  'nox-calder': { dealt: 1.04, launch: 0.962 },
+  'edda-morrow': { dealt: 1.088, launch: 0.919 },
+  'selene-wraith': { dealt: 1.06, launch: 0.943 },
+  'rusk-emberjaw': { dealt: 0.731, launch: 1.367 },
+  'father-thorne': { dealt: 0.996, launch: 1.004 },
 };
 
 /** Guardrails for the tuner, not targets: outside them a fighter needs a moveset or kit change, not a multiplier. */

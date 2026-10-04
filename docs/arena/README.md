@@ -15,6 +15,7 @@ Smash-style mode for this falling-sand world. Start with `MASTER-PLAN.md`.
 | P4 computer fighter (v0 dummy, v1 basic brain, five skill levels) | **built**; playbooks (v2) next |
 | P6a signature loadouts | **built**, chosen with the loadout lab |
 | P5 match rules (stocks, volatility, ring-outs, the collapse), P6b melee primaries, P7 balance passes | planned |
+| Duel CPU close game + CPU vs CPU stock telemetry, Duel balance pass 1 (2026-10-04) | **built and measured** (`AI-STOCK-TACTICS.md`, `STOCK-TELEMETRY.md`) |
 
 **See it:** `npm run dev`, the title's Arena door, the panel's *Other stage* button (the Duel Stage), *Add rival*, a brain for each fighter.
 **Measure it:** `node scripts/fight-batch.mjs <url> --pairs all --seeds 3` then `node scripts/fight-analyse.mjs <dir>`; `fight-tune.mjs` turns the
