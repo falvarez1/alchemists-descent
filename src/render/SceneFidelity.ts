@@ -6,10 +6,11 @@ import { VIEW_H, VIEW_W } from '@/config/constants';
 import { VISUAL_FIDELITY } from '@/config/visualFidelity';
 // Export the actual shared table for browser isolation probes, including HMR.
 export { VISUAL_FIDELITY } from '@/config/visualFidelity';
-import { Pen, BRASS, BRASS_D, BRASS_L, INK, cameraView } from '@/render/sprites/FineArt';
+import { Pen, BRASS, BRASS_D, BRASS_L, INK, cameraView, finePixelStep, viewIntersects } from '@/render/sprites/FineArt';
 import type { RGB } from '@/render/sprites/FineArt';
-import { visibleSurfaceFoliage } from '@/game/SurfaceFoliage';
-import { visitSurfaceFronds } from '@/world/foliageGeometry';
+import { visibleSurfaceFoliage, type SurfacePlant } from '@/game/SurfaceFoliage';
+import { buildFlora, createFloraBlades, floraLean } from '@/world/flora';
+import { blitFloraCache, createFloraCache, floraPalette, paintFlora, pruneFloraCaches, settleFloraLight, type FloraCache } from '@/render/FloraPainter';
 import { surfaceFoliageHash as hash } from '@/world/surfaceFoliage';
 import { lanternFlicker } from '@/config/ambientMotion';
 
@@ -18,47 +19,65 @@ const air = (t: number): boolean => t === Cell.Empty || isGas(t) || isSoftGrowth
 interface MaterialChunk { version: number; water: number[]; rims: number[] }
 interface MaterialCache { epoch: number; revision: number; chunks: Map<number, MaterialChunk> }
 const materials = new WeakMap<World, MaterialCache>();
+const plant = createFloraBlades();
+const caches = new WeakMap<SurfacePlant, FloraCache>();
+const mix = (h: number, v: number): number => Math.imul((h ^ (v | 0)) >>> 0, 16777619) >>> 0;
+interface SeeThrough {
+  /** Everything the opacity depends on inside a box, folded into a cache key. */
+  key(x0: number, y0: number, x1: number, y1: number): number;
+  opacity(x: number, y: number): number;
+}
 const waterWarpX = new Float64Array(VIEW_W + 2), waterWarpY = new Float64Array(VIEW_H + 2);
 
-/** Current moss cells own the crown, motion and fuel. Render only reads
+/** Current moss cells own the plant, its motion and fuel. Render only reads
  * those poses; repeated compose calls never advance a spring or smoulder. */
-function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx, foreground = false): void {
+function drawSurfaceGrowth(out: PixelSurface, light: LightField, ctx: Ctx, foreground = false, see?: SeeThrough): void {
   if (!foreground && VISUAL_FIDELITY.surfaceGrowth <= 0) return;
-  const pen = new Pen(out, cameraView(ctx.camera, 40));
+  const { world, camera } = ctx, frame = ctx.state.frameCount, a = world.activity;
+  const palette = floraPalette(ctx.levels.current?.def?.biome, foreground);
+  const isSolid = (x: number, y: number): boolean => blocksEntity(world.type(Math.floor(x), Math.floor(y)));
+  const step = finePixelStep(out), inv = 1 / step;
+  // Cover plants flutter leaf by leaf, sampled in staggered 2-tick buckets. A
+  // ground tuft only leans, so it re-paints when its lean moves a quarter cell.
+  const bucket = 2;
+  const frameKey = mix(mix(mix(Math.round(step * 1000), Math.round(((camera.renderX * inv) % 1) * 8)),
+    Math.round(((camera.renderY * inv) % 1) * 8)), foreground ? 1 : 0);
+  pruneFloraCaches(frame);
   for (const root of visibleSurfaceFoliage(ctx)) {
     if (Boolean(root.foreground) !== foreground) continue;
-    const { x, y, seed, burn } = root;
-    if (!pen.inView(x - root.height, y - root.height, x + root.height, y + root.height)) continue;
-    const s = light.sample(x, y - 2), open = s.open ?? 1;
-    if (open < .08) continue;
-    const lr = Math.min(1.2, Math.max(.64 * open, s.r)), lg = Math.min(1.2, Math.max(.72 * open, s.g)), lb = Math.min(1.2, Math.max(.55 * open, s.b));
-    const live = 1 - burn * .82;
-    const color: RGB = foreground ? [.12 * lr * live, (.31 + (seed & 3) * .015) * lg * live, .28 * lb * live] :
-      [(.30 + (seed & 3) * .025) * lr * live, (.43 + (seed & 3) * .045) * lg * live, .14 * lb * live];
-    const shade: RGB = foreground ? [.055 * lr * live, .15 * lg * live, .16 * lb * live] : [.12 * lr * live, .23 * lg * live, .11 * lb * live];
-    const rim: RGB = foreground ? [.27 * lr * live, .49 * lg * live, .42 * lb * live] : [.65 * lr * live, .72 * lg * live, .27 * lb * live];
-    visitSurfaceFronds(root, (ax, ay, bx, by, leaf) => {
-      const t = ctx.world.type(Math.round(bx), Math.round(by));
-      if (!air(t) && t !== Cell.Water && !masonry(t)) return;
-      pen.line(ax, ay, bx, by, leaf ? color : shade, leaf ? foreground ? 2.6 : 1.2 : foreground ? 1.4 : 1);
-      if (leaf) pen.px((ax + bx) * .5, (ay + by) * .5, rim, .65);
-    });
-    // The thin moss fringe also belongs to the combustible root, so charring
-    // and root removal remove it instead of leaving painted green behind.
-    if (root.side === 0) for (let k = 1; k < 5 + seed % 12; k++) {
-      const px = x + Math.round(Math.sin(k * .35 + seed) * 2);
-      if (!masonry(ctx.world.type(px, y + k))) break;
-      pen.px(px, y + k, k % 3 ? shade : color);
-    }
-    if (root.burning) {
-      const flame: RGB = [1.1, .50, .12];
-      pen.glow(x + .5 + root.angle * 2, y - Math.max(1, root.height * (1 - burn) * .35), flame, .6 + Math.sin(ctx.state.frameCount * .3 + seed) * .12);
-    }
+    const reach = root.height * 1.3 + 8;
+    if (!viewIntersects(camera, root.x - reach, root.y - reach, root.x + reach, root.y + reach, 4)) continue;
+    const time = frame - ((frame + root.seed) % bucket + bucket) % bucket;
+    const motion = foreground || root.burning ? time : Math.round(floraLean(root, time) * 4) * 7919;
+    let cache = caches.get(root);
+    if (!cache) { cache = createFloraCache(); caches.set(root, cache); }
+    const H = root.height * (1 - root.burn * .75);
+    const lit = settleFloraLight(cache, light, root.x + .5, root.side !== 0 ? root.y + .5 : root.y + 1, H, foreground, frame);
+    let key = mix(mix(mix(mix(mix(frameKey, motion), Math.round(root.angle * 48)), Math.round(root.part * 24)),
+      Math.round(root.burn * 45) * 2 + (root.burning ? 1 : 0)), lit);
+    // Terrain edits (digging, a door) under the plant change what it may paint over.
+    if (a.ready) {
+      for (let cy = Math.max(0, Math.floor((root.y - reach) / 64)); cy <= Math.min(a.rows - 1, Math.floor((root.y + reach) / 64)); cy++) {
+        for (let cx = Math.max(0, Math.floor((root.x - reach) / 64)); cx <= Math.min(a.columns - 1, Math.floor((root.x + reach) / 64)); cx++) key = mix(key, a.versions[cy * a.columns + cx]);
+      }
+    } else key = mix(key, world.mutationVersion);
+    if (see) key = mix(key, see.key(root.x - reach, root.y - reach, root.x + reach, root.y + reach));
+    if (blitFloraCache(out, cache, key, frame)) continue;
+    const blades = buildFlora(root, time, plant), rootY = blades.rootY;
+    // Leaves never paint into rock, except the base, which tucks over the floor lip.
+    const opacity = (x: number, y: number): number => {
+      if (isSolid(x, y) && (y < rootY - .25 || y > rootY + 1.8)) return 0;
+      return see ? see.opacity(x, y) : 1;
+    };
+    paintFlora(out, { blades, palette, light, time, burn: root.burn, burning: root.burning,
+      camX: camera.renderX, camY: camera.renderY, foreground, opacity, isSolid,
+      skirt: root.side !== 0 ? 0 : foreground ? 6 + root.seed % 5 : 1.5 + root.seed % 4 }, cache, key, frame);
   }
 }
 
 /** Functional cover always draws, including with cosmetic fidelity disabled.
- * Leaves cover bodies, but never paint through terrain or bury control glyphs. */
+ * Leaves cover bodies (thinning where the alchemist stands, so he stays
+ * readable), but never paint through terrain or bury control glyphs. */
 export function drawForegroundFoliage(out: PixelSurface, light: LightField, ctx: Ctx): void {
   const level = ctx.levels.current;
   if (!level || ctx.state.mode !== 'play') return;
@@ -68,14 +87,33 @@ export function drawForegroundFoliage(out: PixelSurface, light: LightField, ctx:
     ...(level.portal ? [{ x: level.portal.x, y: level.portal.y, radius: 16 }] : []),
   ].filter(p => Math.abs(p.x - ctx.camera.renderX - VIEW_W / 2) < VIEW_W / 2 + 40 &&
     Math.abs(p.y - ctx.camera.renderY - VIEW_H / 2) < VIEW_H / 2 + 40);
-  const cell = (v: number): number => (out.pixelStep ?? 1) < 1 ? Math.floor(v) : Math.round(v);
-  const allowed = (x: number, y: number): boolean => !blocksEntity(ctx.world.type(cell(x), cell(y))) &&
-    !protectedPoints.some(p => Math.abs(x - p.x) < p.radius && Math.abs(y - p.y) < p.radius);
-  const set = (out.setFinePx ?? out.setPx).bind(out), add = (out.addFinePx ?? out.addPx).bind(out);
-  const setPx: PixelSurface['setPx'] = (x, y, r, g, b) => { if (allowed(x, y)) set(x, y, r, g, b); };
-  const addPx: PixelSurface['addPx'] = (x, y, r, g, b) => { if (allowed(x, y)) add(x, y, r, g, b); };
-  drawSurfaceGrowth({ pixelStep: out.pixelStep, setPx, addPx, setFinePx: out.setFinePx ? setPx : undefined,
-    addFinePx: out.addFinePx ? addPx : undefined }, light, ctx, true);
+  const p = ctx.player, body = !p.dead;
+  const cx = p.x, cy = p.y - 8, head = p.y - 17;
+  // Settling into cover closes the leaves around him: the see-through thins as concealment builds.
+  const clear = .42 + .3 * (ctx.foliageCover?.progress ?? 0);
+  const progress = Math.round((ctx.foliageCover?.progress ?? 0) * 16);
+  drawSurfaceGrowth(out, light, ctx, true, { key: (x0, y0, x1, y1) => {
+    // Only what overlaps this plant: his see-through window and nearby glyphs.
+    let key = 0;
+    if (body && cx + 6 > x0 && cx - 6 < x1 && cy + 10 > y0 && cy - 10 < y1) {
+      key = mix(mix(mix(1, Math.round(cx * 4)), Math.round(cy * 4)), progress);
+    }
+    for (const q of protectedPoints) {
+      if (q.x + q.radius > x0 && q.x - q.radius < x1 && q.y + q.radius > y0 && q.y - q.radius < y1) key = mix(mix(key, Math.round(q.x * 4)), Math.round(q.y * 4));
+    }
+    return key;
+  }, opacity: (x, y) => {
+    let a = 1;
+    for (const q of protectedPoints) {
+      const d = Math.max(Math.abs(x - q.x), Math.abs(y - q.y)) / q.radius;
+      if (d < 1) a = Math.min(a, .22 + .78 * d * d);
+    }
+    if (body) {
+      const e = ((x - cx) / 5.5) ** 2 + ((y - cy) / 9) ** 2;
+      if (e < 1 && y > head) a *= clear + (1 - clear) * Math.max(0, (e - .45) / .55);
+    }
+    return a;
+  } });
 }
 
 /** Fine material edges, caustics and foam belong to real cells, including draining and newly

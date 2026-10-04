@@ -70,6 +70,9 @@ node scripts/perf-scene.mjs    # repeatable perf benchmark (Welch t-test vs save
 # (every action posed + costume-ticked, zoomed), probe-player-death.mjs
 # Proving Yard (dev server running): verify-fighter-arena.mjs (the Arena door to the yard, the hall, the panel, every fighter's Z and T,
 # the ram, the keg), shot-blueprint.mjs fighter-test (the whole hall).
+# Surface flora (docs/FOREGROUND-COVER.md): flora-studio.mjs (every species x climate on a stage: THE way to
+# iterate the plants' look), shot-foliage.mjs (in-game, zoomed), perf-flora.mjs + probe-flora-flicker.mjs (start their OWN fresh server),
+# verify-foliage-cover.mjs + verify-living-foliage.mjs (run on a freshly started server).
 # Title menu (dev server running): verify-title-menu.mjs (the menu at three sizes: keys, rows, lists, seed, pointer, a
 # fake pad the game polls, Descend starts what the rows say), shot-title.mjs (every page, for the eye).
 # Gameplay/runtime probes (dev server running): verify-tea-machine.mjs (floor 1 PLAYED with

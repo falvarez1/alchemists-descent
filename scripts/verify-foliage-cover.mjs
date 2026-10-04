@@ -20,14 +20,23 @@ try {
   await page.addStyleTag({ content: '#wave-banner, #toast-stack, .hint-teach-overlay { visibility: hidden !important; }' });
   const setup = await page.evaluate(async () => {
     const ctx = window.__game.ctx;
-    const { visibleSurfaceFoliage } = await import('/src/game/SurfaceFoliage.ts');
+    const { surfaceFoliageInBounds } = await import('/src/game/SurfaceFoliage.ts');
+    const { blocksEntity } = await import('/src/sim/CellType.ts');
     ctx.state.paused = true; ctx.state.arrivalGraceUntil = 0;
     ctx.player.godMode = true; ctx.enemies.length = 0;
-    ctx.camera.snapTo(270, 314);
-    const roots = visibleSurfaceFoliage(ctx);
-    const root = roots.find(p => p.foreground && p.x >= 264 && p.x <= 282 && p.y === 314);
-    if (!root) throw new Error('No natural cover on the generated Intake path');
-    Object.assign(ctx.player, { x: root.x - 30, y: 314, vx: 0, vy: 0, grounded: true });
+    const w = ctx.world, roots = surfaceFoliageInBounds(w, 0, 0, w.width, w.height);
+    // A natural cover plant with a flat runway to its left and open floor to its right (the watching creature).
+    const clear = p => {
+      for (let x = p.x - 34; x <= p.x + 80; x += 2) {
+        if (!blocksEntity(w.type(x, p.y + 1))) return false;
+        for (let y = p.y - 22; y <= p.y - 1; y += 3) if (blocksEntity(w.type(x, y))) return false;
+      }
+      return true;
+    };
+    const root = roots.find(p => p.foreground && clear(p));
+    if (!root) throw new Error('No natural cover with a clear runway on the generated Intake');
+    ctx.camera.snapTo(root.x, root.y);
+    Object.assign(ctx.player, { x: root.x - 30, y: root.y, vx: 0, vy: 0, grounded: true });
     window.__coverRoot = { x: root.x, y: root.y };
     return { root: window.__coverRoot, front: roots.filter(p => p.foreground).length, back: roots.filter(p => !p.foreground).length };
   });
@@ -63,11 +72,12 @@ try {
   const senses = await page.evaluate(async () => {
     const game = window.__game, ctx = game.ctx;
     const { ensureCreatureMind } = await import('/src/creatures/perception.ts');
-    const enemy = ctx.enemyCtl.spawn('golem', 350, 314);
+    const { x: rx, y: ry } = window.__coverRoot, ex = rx + 75;
+    const enemy = ctx.enemyCtl.spawn('golem', ex, ry);
     const mind = ensureCreatureMind(enemy, ctx.state.worldSeed); mind.facing = -1;
     const step = count => {
       for (let i = 0; i < count; i++) {
-        Object.assign(enemy, { x: 350, y: 314, vx: 0, vy: 0 });
+        Object.assign(enemy, { x: ex, y: ry, vx: 0, vy: 0 });
         mind.facing = -1; game.tick(false, { forcePaused: true });
       }
     };
