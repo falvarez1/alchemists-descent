@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,6 +48,27 @@ jobs:
 
       - name: Builder bundle boundary
         run: npm run verify:builder-bundle
+
+      - name: AssemblyScript WASM generation
+        run: |
+          npm run build:wasm
+          git diff --exit-code -- src/world/virtual/wasm/roundCornersWasm.ts
+
+  browser-smoke:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Chromium for browser probes
         run: npx playwright-core install --with-deps chromium
@@ -96,8 +117,3 @@ jobs:
           done
           curl -fsS http://127.0.0.1:4173/alchemists-descent/ >/dev/null
           npm run verify:builder-prod-network -- http://127.0.0.1:4173/alchemists-descent/
-
-      - name: AssemblyScript WASM generation
-        run: |
-          npm run build:wasm
-          git diff --exit-code -- src/world/virtual/wasm/roundCornersWasm.ts
