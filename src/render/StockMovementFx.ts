@@ -26,6 +26,16 @@ export function drawStockMovementFx(out: PixelSurface, ctx: Ctx): void {
       if (out.blendFinePx) out.blendFinePx(x, y, r * alpha, g * alpha, b * alpha, alpha);
       else out.addPx(x, y, r * alpha, g * alpha, b * alpha);
     };
+    // shield-grab.png: a translucent sphere around the guard (faint at the core, thicker toward the rim), then the ring.
+    if (!quiet && out.blendFinePx) {
+      const step = out.pixelStep ?? 1, rx = radius, ry = radius + 3, cy = p.y - 11;
+      for (let y = -ry; y <= ry; y += step) for (let x = -rx; x <= rx; x += step) {
+        const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+        if (d >= 1) continue;
+        const a = (low ? .05 : .07) + (low ? .08 : .14) * d * d;
+        out.blendFinePx(p.x + x, cy + y, r * a, g * a, b * a, a);
+      }
+    }
     // A thin complete ring reads as defense; depletion breaks the ring into amber dashes.
     for (let i = 0; i < 160; i++) {
       if (low && i % 16 > 10) continue;

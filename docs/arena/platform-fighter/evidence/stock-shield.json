@@ -101,12 +101,12 @@
     "scrollWidth": 390,
     "cards": [
       {
-        "width": 170,
-        "scrollWidth": 170
+        "width": 167,
+        "scrollWidth": 167
       },
       {
-        "width": 170,
-        "scrollWidth": 170
+        "width": 167,
+        "scrollWidth": 167
       }
     ]
   },

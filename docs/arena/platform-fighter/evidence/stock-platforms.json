@@ -1517,6 +1517,6 @@
       "stocks": 3
     }
   ],
-  "controllerNotice": "shown without pad; hidden on connection; GPU tip absent",
+  "controllerNotice": "none over the match (it lives in the Duel lobby); GPU tip absent",
   "errors": []
 }

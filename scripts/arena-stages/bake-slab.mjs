@@ -17,6 +17,11 @@ const opt = (n, f) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i
 const artPath = args[0], stage = opt('stage', 'foundry'), slab = opt('slab', 'main');
 const widthCells = Number(opt('width', '480')), previewPath = opt('preview', null);
 const K = Number(opt('colors', '40'));
+// --edge <hex>: the lit walking edge (default the concept's copper #efac58); --max-lum <0..1>: the brightest any hull
+// colour may be (default .72, under the 0.85 bloom threshold at ordinary stage light; pale stone wants less).
+const edgeHex = opt('edge', '#efac58').replace('#', '');
+const EDGE = [parseInt(edgeHex.slice(0, 2), 16), parseInt(edgeHex.slice(2, 4), 16), parseInt(edgeHex.slice(4, 6), 16)];
+const MAX_LUM = Number(opt('max-lum', '0.72'));
 const outDir = join('public/assets/arena', stage);
 mkdirSync(outDir, { recursive: true });
 
@@ -150,7 +155,7 @@ const depth = lastRow + 1;
 
 // ---- tone: the walking edge is the concept's lit copper (#efac58), and no hull colour may bloom ----
 {
-  const edge = [239, 172, 88], maxLum = 0.72 * 255;
+  const edge = EDGE, maxLum = MAX_LUM * 255;
   const lum = (c) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
   for (let cx = 0; cx < Wc; cx++) if (hull[cx]) colors[cx] = edge;
   for (let i = Wc; i < Wc * Hc; i++) {
@@ -201,7 +206,7 @@ const glassCells = [...new Set(glass.map(([x, y]) => `${x},${y}`))].map(s => s.s
 // ---- the hull face at presentation (half-cell) resolution: what close camera framings draw over the cells ----
 {
   const fw = Wc * 2, fh = depth * 2, face = Buffer.alloc(fw * fh * 4);
-  const edge = [239, 172, 88], maxLum = 0.72 * 255, lum = (c) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+  const edge = EDGE, maxLum = MAX_LUM * 255, lum = (c) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
   for (let fy = 0; fy < fh; fy++) for (let fx = 0; fx < fw; fx++) {
     const cx = fx >> 1, cy = fy >> 1;
     if (!hull[cx + cy * Wc]) continue;

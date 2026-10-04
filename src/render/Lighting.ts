@@ -1082,8 +1082,9 @@ export class Lighting implements LightField {
 
 /**
  * A stock stage is lit for play (ambient, its own lanterns, the furnace beyond): the wand and lantern that carve the
- * campaign's designed darkness would wash the deck white around both fighters (measured 1.7x at the feet). In a stock
+ * campaign's designed darkness would wash the deck white around both fighters (measured 1.7x at the feet; light is
+ * additive over the 0.92 ambient, so even 30% left 1.37x). In a stock
  * match they keep only a faint presence; elsewhere they are unchanged.
  */
-const STOCK_WAND_LIGHT = 0.3;
+const STOCK_WAND_LIGHT = 0.1;
 function stockWandLight(ctx: Ctx): number { return ctx.arena?.stockMatch ? STOCK_WAND_LIGHT : 1; }

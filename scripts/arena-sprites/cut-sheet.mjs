@@ -25,7 +25,6 @@ mkdirSync(outDir, { recursive: true });
 
 const { data, info } = await sharp(sheetPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 const W = info.width, H = info.height;
-const px = (x, y) => (x + y * W) * 4;
 
 // ---- 1. key: how magenta is a pixel (0 = not at all, 1 = pure key) ----
 const key = new Float32Array(W * H);
