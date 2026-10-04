@@ -6,7 +6,7 @@ import { PLAYER_H, PLAYER_HALF_W } from '@/core/types';
 import { VIEW_H, VIEW_W } from '@/config/constants';
 import { FIGHTER_LOADOUTS, loadoutSave } from '@/content/fighterLoadouts';
 import { ARENA_RULES } from '@/config/arenaRules';
-import { STOCK_RULES, stockHitstopTicks } from '@/config/stockRules';
+import { STOCK_RULES, stockCountdownBeat, stockHitstopTicks } from '@/config/stockRules';
 import type { BlastZone, StockLedgeInput, StockMatchView } from '@/core/arenaMatch';
 import { MatchDirector, stockLaunch, influenceLaunch } from '@/arena/MatchDirector';
 import { StockDodge } from '@/arena/StockDodge';
@@ -128,6 +128,7 @@ export class ArenaSlots implements ArenaApi {
     const slot = this.boundSlot;
     if (!this.active || !this.match || !this.blow || this.blow.by === slot || !this.shields[slot].block(amount)) return false;
     this.ctx.audio.sfx(this.shields[slot].phase === 'broken' ? 'arena.shield.break' : 'arena.shield.block');
+    if (this.shields[slot].phase === 'broken') this.ctx.events.emit('stockShieldBreak', { slot });
     return true;
   }
   stockLedge(slot: number): StockLedge | null { return this.match ? this.ledges[slot] ?? null : null; }
@@ -229,6 +230,8 @@ export class ArenaSlots implements ArenaApi {
   /** The last blow on each slot, and whether the victim has landed (or caught a ledge) since: a stock ring-out credits the
    *  hitter for as long as the victim has not, however long the fall (the platform-fighter convention). */
   private readonly lastBlow: Array<{ by: number; at: number; landed: boolean }> = [{ by: -1, at: -1e9, landed: true }, { by: -1, at: -1e9, landed: true }];
+  /** The last stockMatchBeat announced (state|count), so each beat is said once. */
+  private lastBeat = '';
   private readonly focus = { x: 0, y: 0 };
   private ownerBound = false;
   readonly bout: Bout = { state: 'idle', winner: null, startedAt: -1, endedAt: -1, downs: [] };
@@ -805,6 +808,12 @@ export class ArenaSlots implements ArenaApi {
     if (match.state === 'finished' && this.bout.state !== 'won') {
       this.bout.state = 'won'; this.bout.winner = match.winner; this.bout.endedAt = this.ctx.state.frameCount;
     }
+    // The countdown's second, the fight's start or the match's end changed this tick (the announcer calls it).
+    // The match's beat (each countdown call, the fight, the end) is announced once, the first tick it holds: the first
+    // countdown tick says "three" even though reset() set the countdown outside this tick.
+    const beat = `${match.state}|${stockCountdownBeat(match.countdown)}`;
+    if (match.state !== 'idle' && beat !== this.lastBeat) this.ctx.events.emit('stockMatchBeat', { state: match.state, count: stockCountdownBeat(match.countdown), winner: match.winner, reason: match.reason });
+    this.lastBeat = beat;
   }
 
   /** Stand the body at (x, y), whole, still and ready (a bout's start; under the slot's binding). */
@@ -842,6 +851,7 @@ export class ArenaSlots implements ArenaApi {
   }
 
   reset(): void {
+    this.lastBeat = '';
     if (!this.active) return;
     this.install(0);
     this.ctx.projectiles.length = 0;

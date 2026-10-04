@@ -14928,5 +14928,257 @@
     "bytes": 8194
    }
   ]
+ },
+ "duel.ui.pause": {
+  "pack": "arena",
+  "cat": "ui",
+  "prompt": "One arcade fighting game pause sound. A short bright synth chime with a quick downward pitch sweep, crisp and clean like a cabinet freezing the action. No voice, no music melody. One chime only.",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": 3.2,
+    "onsetSec": 0,
+    "pinnedPct": 2.86,
+    "gainDb": -12.7,
+    "limitDb": 0,
+    "sec": 0.45,
+    "truncated": false,
+    "bytes": 4223
+   }
+  ]
+ },
+ "duel.ui.confirm": {
+  "pack": "arena",
+  "cat": "ui",
+  "prompt": "One punchy arcade menu confirm sound for a fighting game select screen. A bright rising two-note synth chirp layered with a crisp metallic hit, short and satisfying, dry. No voice, no music melody, no reverb. One confirm only.",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": 2.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.07,
+    "gainDb": -8.4,
+    "limitDb": 0,
+    "sec": 0.35,
+    "truncated": false,
+    "bytes": 3387
+   }
+  ]
+ },
+ "duel.ui.back": {
+  "pack": "arena",
+  "cat": "ui",
+  "prompt": "One short arcade menu back and cancel sound. A quick falling two-note synth blip, softer and lower than a confirm, clean and dry. No voice, no music, no reverb. One blip only.",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.48,
+    "peakDb": -4.9,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": 1.7,
+    "limitDb": 0,
+    "sec": 0.28,
+    "truncated": false,
+    "bytes": 2760
+   }
+  ]
+ },
+ "duel.stage": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One arcade fighting game stage select sound. A fast deep whoosh landing on a solid heavy impact with a short metallic ring, cinematic but short and dry. No voice, no music.",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 4.1,
+    "onsetSec": 0,
+    "pinnedPct": 4.68,
+    "gainDb": -7.8,
+    "limitDb": 0,
+    "sec": 0.69,
+    "truncated": false,
+    "bytes": 6104
+   }
+  ]
+ },
+ "duel.join": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One classic arcade coin insert sound. A metal coin dropping into a cabinet coin slot with a bright electronic credit chime, crisp, punchy and nostalgic. No voice, no music, no crowd.",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1,
+    "peakDb": 3.4,
+    "onsetSec": 0,
+    "pinnedPct": 0.1,
+    "gainDb": -6.3,
+    "limitDb": 0,
+    "sec": 0.86,
+    "truncated": false,
+    "bytes": 7358
+   }
+  ]
+ },
+ "duel.ready": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One heavy arcade fighting game character lock-in sound, the moment a player confirms their fighter. A deep punchy metallic slam layered with a bright electric shimmer and a short whoosh, powerful and satisfying, dry with a short tail. No voice, no music.",
+  "dur": 1,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 1,
+    "rawSec": 1,
+    "peakDb": 3.1,
+    "onsetSec": 0,
+    "pinnedPct": 1.55,
+    "gainDb": -7.3,
+    "limitDb": 0,
+    "sec": 0.8,
+    "truncated": false,
+    "bytes": 6940
+   }
+  ]
+ },
+ "duel.ui.move": {
+  "pack": "arena",
+  "cat": "ui",
+  "prompt": "One very short bright arcade menu cursor blip for a fighting game character select screen. A clean synthetic square-wave tick with a tiny metallic sparkle on top, crisp and dry. No voice, no music, no reverb. A single blip only.",
+  "dur": 0.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 2,
+    "rawSec": 0.48,
+    "peakDb": 2,
+    "onsetSec": 0,
+    "pinnedPct": 0.34,
+    "gainDb": -12.8,
+    "limitDb": 0,
+    "sec": 0.14,
+    "truncated": true,
+    "bytes": 1715
+   }
+  ]
+ },
+ "duel.count": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One fighting game round countdown tick. A single deep punchy drum hit layered with a short bright metallic clank, tight and dry, exactly one beat. No voice, no music, no sequence, no reverb tail.",
+  "dur": 0.6,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 0.6,
+    "peakDb": 2.6,
+    "onsetSec": 0,
+    "pinnedPct": 0.04,
+    "gainDb": -5.6,
+    "limitDb": 0,
+    "sec": 0.41,
+    "truncated": false,
+    "bytes": 3805
+   }
+  ]
+ },
+ "duel.fight": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One explosive fighting game round start sting for the moment the fight begins. A huge cinematic impact: deep boom, crashing cymbal and a bright electric burst, adrenaline pumping, short powerful decay. No voice, no melody, no crowd.",
+  "dur": 1.5,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.48,
+    "peakDb": 2.3,
+    "onsetSec": 0,
+    "pinnedPct": 0.89,
+    "gainDb": -5.1,
+    "limitDb": 0,
+    "sec": 0.75,
+    "truncated": false,
+    "bytes": 6522
+   }
+  ]
+ },
+ "duel.game": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One triumphant fighting game match end sting. A huge final hit: a gong-like metallic crash over a deep boom and a bright shimmering swell, decisive and climactic, natural decay. No voice, no melody, no crowd.",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": 2.7,
+    "onsetSec": 0,
+    "pinnedPct": 0.48,
+    "gainDb": -4.8,
+    "limitDb": 0,
+    "sec": 1.4,
+    "truncated": false,
+    "bytes": 11746
+   }
+  ]
+ },
+ "duel.results": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One arcade results screen reveal sound as the winner card slams onto the screen. A quick rising whoosh into a crisp metallic stamp and a bright shimmering sparkle, celebratory and short. No voice, no music melody.",
+  "dur": 1.2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 1.2,
+    "peakDb": 6.1,
+    "onsetSec": 0.251,
+    "pinnedPct": 1.59,
+    "gainDb": -7.4,
+    "limitDb": 0,
+    "sec": 0.613,
+    "truncated": false,
+    "bytes": 5477
+   }
+  ]
+ },
+ "duel.ko": {
+  "pack": "arena",
+  "cat": "stinger",
+  "prompt": "One massive fighting game knockout blast for a fighter sent flying out of the arena. A clean enormous cinematic impact: a deep round boom, a bright electric crack and a short shower of scattering metal debris, punchy with plenty of headroom, dramatic decay. No voice, no music, no crowd.",
+  "dur": 2,
+  "takes": [
+   {
+    "take": 1,
+    "variant": 0,
+    "rawSec": 2,
+    "peakDb": -0.8,
+    "onsetSec": 0,
+    "pinnedPct": 0,
+    "gainDb": -1.6,
+    "limitDb": 0,
+    "sec": 1.11,
+    "truncated": false,
+    "bytes": 9448
+   }
+  ]
  }
 }

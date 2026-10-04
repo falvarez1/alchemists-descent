@@ -15,20 +15,23 @@ import { listen } from '@/audio/failSafe';
  * - `clipSaved` → a camera shutter.
  *
  * Listeners are fail-safe (audio/failSafe): a sound never aborts the emit.
+ * `arena` (audio/arenaAudio inArena): the phials and the run's verdict are the
+ * descent's; in the Duel they stay quiet (the announcer calls the match).
  * Returns a disposer that unsubscribes everything.
  */
-export function installAudioStingers(events: EventBus, audio: Pick<AudioApi, 'stinger'>): () => void {
+export function installAudioStingers(events: EventBus, audio: Pick<AudioApi, 'stinger'>, arena: () => boolean = () => false): () => void {
   let phials: number | null = null;
   const off = [
     listen(events, 'alchemyKill', ({ chain, cause, x, y }) => audio.stinger('alchemy', { chain, cause, x, y })),
     listen(events, 'phialsChanged', ({ phials: next, reason }) => {
       const previous = phials;
       phials = next;
-      if (reason === 'start') return;
+      if (reason === 'start' || arena()) return;
       if (reason === 'death' || (previous !== null && next < previous)) audio.stinger('phialCrack');
       else if (previous === null || next > previous) audio.stinger('phialFill');
     }),
     listen(events, 'runEnded', ({ outcome }) => {
+      if (arena()) return;
       if (outcome === 'victory') audio.stinger('victory');
       else if (outcome === 'fallen') audio.stinger('fallen');
     }),

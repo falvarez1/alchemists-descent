@@ -2,6 +2,7 @@ import type { CardId, EnemyKind, LockKind, TimeControlStatus } from '@/core/type
 import type { AlchemyKillInfo, RunSummary } from '@/core/run';
 import type { BrewAttemptInfo, CauldronView } from '@/core/alchemy';
 import type { StoryCinemaView, StoryDialogueView, StorySpeaker } from '@/core/story';
+import type { FighterId } from '@/content/fighters';
 
 /** What an organism just did (the `organism` event). */
 export type OrganismAction =
@@ -55,6 +56,15 @@ export interface EventMap {
   /** Confirmed, visible health loss in an Arena exchange. No queued inputs or hidden cooldowns. */
   fighterHit: { by: number; victim: number; damage: number; tick: number; attack?: string };
   arenaReset: undefined;
+  /**
+   * ARENA stock match, from the tick that changed it (ArenaSlots): the countdown's call changed (`count`, 3 2 1:
+   * config/stockRules stockCountdownBeat, which the HUD shows too), the fight began, or the match ended.
+   */
+  stockMatchBeat: { state: 'countdown' | 'fighting' | 'finished'; count: number; winner: number | null; reason: 'stocks' | 'timeout' | 'draw' | null };
+  /** ARENA stock match: a fighter's ultimate fired (the super freeze holds the game; the HUD cuts in its portrait). */
+  stockUltimate: { slot: number; fighter: FighterId; name: string };
+  /** ARENA stock match: a fighter's shield gave out under a blow. */
+  stockShieldBreak: { slot: number };
   versusChanged: undefined;
   versusPause: undefined;
   versusMenu: { action: 'previous' | 'next' | 'confirm' | 'back' };

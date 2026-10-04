@@ -1,4 +1,4 @@
-import type { AudioApi, AudioStinger, AudioStingerOptions, VolumeChannel } from '@/core/types';
+import type { AudioApi, AudioStinger, AudioStingerOptions, DuelAudioApi, VolumeChannel } from '@/core/types';
 import {
   AUDIO_BUSES,
   BUS_CHANNEL,
@@ -59,6 +59,8 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
 // ===================== Procedural Audio Engine =====================
 // The sampled layer (audio/SfxEngine.ts) completes the API with `sfx` and `creature`.
 export class AudioEngine implements Omit<AudioApi, 'sfx' | 'creature'>, StreamHost {
+  /** The Duel's arcade cabinet (audio/DuelAnnouncer), attached by the Game once the context exists. */
+  duel?: DuelAudioApi;
   /** The context voices are built on: the live one, or an offline one during `debugRenderOffline`. */
   private audioCtx: BaseAudioContext | null = null;
   /** The real output context (suspend/resume/close live here). */
