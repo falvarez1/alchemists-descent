@@ -97,3 +97,119 @@ Both are numbers the registry turns (`ftune set arena.blowScale ...`), so they s
 **Decision.** `ArenaSlots` rewrites ONE stand-in enemy to mirror the opponent of the bound slot (1v1) rather than toggling a proxy per slot in
 and out of `ctx.enemies`. **Why.** The array is never mutated while a system iterates it (an explosion loops the enemies and calls `damage`,
 which binds the victim). **Revisit** when a third fighter is wanted: that needs one stand-in each and the toggling D-001 describes.
+
+## D-014 (2026-10-04): the balance gates measure Hard AND Expert
+
+**Decision.** A fighter must sit inside the balance band at CPU level 4 (Hard) and at level 5 (Expert); both are part of the
+official setup (`BALANCE-LAB.md` 3 and 9). **Why.** Win rates shift with skill: simple, safe tools dominate low skill and fall
+off at high skill, and the reverse. Gating on both is the most robust definition of balance for a game people will play
+seriously. **Rejected:** Hard only (a fighter broken only at high skill slips through); Expert only (blind to what most
+players meet); all five weighted (the low levels add noise and the weights are arbitrary). **Revisit** if human telemetry
+(L5) shows real play sits outside the Hard-Expert range.
+
+## D-015 (2026-10-04): mirrored personality rotation for the gates
+
+**Decision.** In gate runs both sides of a match play the same CPU personality, rotating through all six across the seeds.
+Each fighter's own lobby personality is run and reported, not gated. **Why.** A single profile for everyone measures the
+roster through one playstyle and favours the kits that suit it; per-fighter personalities mix kit strength with playstyle
+strength, so tuning would partly fix personalities. Mirroring removes the style advantage; rotating covers every style.
+**Rejected:** Duelist on both sides (what pass 1 used); each fighter's own; gating on the lobby view. **Revisit** when a
+personality is added or removed (the rotation must cover them all).
+
+## D-016 (2026-10-04): fighter data is JSON sheets with a generated schema
+
+**Decision.** One JSON sheet per fighter (body, Duel levers, moves, kit numbers, loadout, CPU hints, identity) in
+`packages/fighters`, typed by TypeScript, validated at runtime, with a JSON Schema generated from the types (CI fails when
+it is stale) and a `notes` map for field help. Behaviour stays in code. **Why.** Clean separation of data and behaviour;
+any tool (the Lab, the tuner, a future web editor or modding) reads and writes it safely; every change is a clean diff.
+**Rejected:** TypeScript data modules written through an AST tool (heavier, fragile, TypeScript-only); today's tables with
+pattern-matched rewrites (breaks on nested movesets). **Revisit** never for the format; the schema evolves with versions.
+
+## D-017 (2026-10-04): the full move vocabulary, with a required core
+
+**Decision.** The engine, inputs, schema, analyser and CPU support the full platform-fighter slot set (28 slots). Every
+fighter must fill 16 core slots; the other 12 are optional and resolve through an explicit, schema-declared fallback table
+(`BALANCE-LAB.md` 5.2). Missing core slots are explicit, expiring waivers until each moveset is authored. **Why.** One
+architecture that never needs a rewrite, with design and art effort spent where a character's identity lives. **Rejected:**
+all 28 for everyone (about 280 moves before the roster is complete); a compact fixed set (the engine and inputs would need
+reworking as the game grows); free-form named moves (inputs differ per character; nothing compares like with like).
+**Revisit** if a slot proves unused across the roster.
+
+## D-018 (2026-10-04): stale-move negation is a match rule, on by default
+
+**Decision.** A fighter's recently landed moves form a queue; a move in it deals reduced damage and knockback until variety
+refreshes it. Rule data in `config/stockRules`, on by default, switchable per mode. The analyser, the KO calculator and the
+gates always measure fresh values. **Why.** It structurally discourages one-move spam, so a single slightly strong move
+cannot carry a fighter, and it rewards variety; measuring fresh values means it never hides an overpowered move. **Rejected:**
+built but off (anti-spam left entirely to numbers); not built. **Revisit** if telemetry shows it makes damage feel
+unpredictable to players, or blow concentration does not fall when it is turned on.
+
+## D-019 (2026-10-04): runs are self-contained; drafts are local
+
+**Decision.** Every run record embeds the complete override set, build hash and sheet hashes it played. Drafts are local
+working state (`.lab/drafts/`, git-ignored) that can be exported to share. The repository records what was applied: the
+sheets, `balance/CHANGELOG.md`, the baseline. **Why.** Reproducibility must not depend on a draft file that can change or
+vanish; the repository should hold decisions, not abandoned experiments. **Rejected:** committing every draft; committing
+named drafts only (both still need self-contained runs to be reproducible). **Revisit** if a hosted Lab (BL7.3) needs shared
+drafts; they would live on the relay, not in git.
+
+## D-020 (2026-10-04): the balance gates are strict, with waivers
+
+**Decision.** The schema and power-budget gates (L0, L1) fail every build. The smoke matrix (L2) is a required check on
+pull requests touching fighter, move or arena code. The nightly full matrix (L3) opens an issue and blocks releases on a
+fail-level gate. The only escape hatch is a written, expiring waiver in `balance/waivers.json`, reviewed like code.
+**Why.** Advisory gates get ignored the week they matter; a required check with a deliberate, visible exception is what
+keeps an overpowered change from landing. Determinism (fixed seeds, frozen builds) keeps a required check from failing at
+random. **Rejected:** static strict with simulation advisory; everything advisory. **Revisit** if the smoke's cost or a
+determinism gap makes the check unreliable; fix the cause rather than loosening the gate.
+
+## D-021 (2026-10-04): the Balance Lab is built after the CLASHFORGED split
+
+**Decision.** The Lab starts once the split (`docs/split/SPLIT-PLAN.md`) has reached at least its phase 6, and is built
+directly in the monorepo (`packages/fighters`, `apps/clashforged/lab/`, `tools/clashforged/lab/`). **Why** (the user's
+choice): no path churn, built once in its final home under the boundary rules. **Accepted cost:** balance tooling waits on
+the split; until then every fighter change follows the interim routine in `BALANCE-LAB-PLAN.md` ("Before the Lab").
+**Rejected:** building now in isolated folders (recommended at the time: balance work would proceed sooner); data now and
+the Lab later. **Revisit** if the split stalls for long while new moves keep landing.
+
+**Revised 2026-10-04, the same day: the split became two repositories** (`docs/split/SPLIT-PLAN.md` D1: CLASHFORGED gets
+a copy of this repository with the full history and deletes the campaign; Descent deletes the arena). The monorepo, its
+phase 6 and its packages no longer exist. The decision's reason holds, and is met sooner: the Lab's final home is the
+CLASHFORGED repository, which keeps this repository's layout, so the Lab starts there **the day the copy lands** (split
+phase 1). Its paths, also for D-016's sheets: `src/content/fighters/sheets/` (sheets and schema),
+`src/fighters/analysis/` (the analyser), `lab.html` and `src/lab/` (the page), `src/dev/` (the bridge's game side) and
+`tools/lab/` (server, runner, store, gates). The interim routine applies until then.
+
+## D-022 (2026-10-04): CLASHFORGED is hosted as a Cloudflare Worker with static assets; Descent stays on Pages
+
+**Decision.** CLASHFORGED deploys as one Cloudflare Worker with static assets (Ajar Red account). The same deployment holds
+the static game, the online Duel's room Durable Objects (one per room) and, later, the Containers for server-run matches.
+Its `_headers` file sends COOP/COEP natively. A custom domain, if it gets one, keeps its DNS on Cloudflare. In dev, the
+Cloudflare Vite plugin runs the room code in Cloudflare's runtime inside the app's Vite server, replacing the Node `ws`
+plugin, so the room logic (`servers/duel/Room.ts`) is hosted once. Descent stays on Pages (`alchemists-descent.pages.dev`)
+and GitHub Pages. This revises split decision D5 (`docs/split/SPLIT-PLAN.md`), which had chosen a Pages project; nothing
+had been deployed.
+
+**Why.** For static files Workers and Pages are equivalent (asset requests free, server code at the same rate). An online
+game needs what only Workers has (Cloudflare's Pages-to-Workers compatibility matrix):
+- Durable Objects and Containers **in the same deployment**. With Pages the room server must be a separately deployed
+  Worker bound in production and preview, so the site and the server ship on separate schedules and a new client can meet
+  an old room protocol.
+- The Cloudflare Vite plugin: dev runs the real room code, not a second Node implementation.
+- Gradual deployments: a protocol change can reach a slice of players first.
+- The rate-limiting binding: abuse control on room creation and joins, required before public play (`docs/DUEL-LAN.md`).
+- Workers Logs, Logpush, Tail Workers and source maps: diagnosing production room failures after the fact.
+- Queue consumers: ingesting recorded human matches (the Balance Lab's BL7.2) without touching the match.
+
+Descent is purely static (it needs only the COOP/COEP headers), so moving it would gain nothing.
+
+**Accepted costs.** A custom domain must use Cloudflare nameservers (Pages also accepts a CNAME from outside DNS). Workers'
+branch previews are less configurable than Pages' (custom branch aliases are still "coming soon"). Early Hints need the
+zone setting turned on.
+
+**Rejected:** a Pages project with a separately deployed Durable Object Worker (two deploy units, version skew, no Vite
+plugin); a non-Cloudflare host for the room server (the AuthorLink relay already proves Durable Objects here, and the room
+logic was written to be hosted that way).
+
+**Revisit** if CLASHFORGED needs a domain whose DNS cannot move to Cloudflare, or if Cloudflare closes the gap (Durable
+Objects defined inside Pages projects).

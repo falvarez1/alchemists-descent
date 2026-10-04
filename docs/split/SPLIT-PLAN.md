@@ -22,7 +22,7 @@ ports it.
 | D2 | What CLASHFORGED keeps | Duel, LAN, lobby, **Training** (the Proving Yard, made player-facing), the **Builder** (dev-only, stage authoring), **AuthorLink** (dev-only live tuning). Not the Sandbox. | |
 | D3 | Descent and the arena | **Descent deletes the arena entirely**: no Duel or Arena doors, no fighter picker, no fighters in runs, and no hooks kept for them | |
 | D4 | The Builder and AuthorLink | **Each repository keeps its own copy** | No shared package has to stay neutral; each editor serves one game's content. |
-| D5 | CLASHFORGED hosting | **Its own Cloudflare Pages project** (`clashforged.pages.dev`, Ajar Red account). Descent keeps `alchemists-descent.pages.dev` and GitHub Pages. | Cloudflare Pages can send the COOP/COEP headers the threaded sim needs, and a future online-Duel server can run as a Durable Object. |
+| D5 | CLASHFORGED hosting | **Its own Cloudflare Worker with static assets** (Ajar Red account): one deployment holding the static game, the online Duel's room Durable Objects, and later the Containers for server-run matches. A custom domain, if any, keeps its DNS on Cloudflare. Descent stays on Pages (`alchemists-descent.pages.dev`) and GitHub Pages. | Workers serve static assets and `_headers` (COOP/COEP) natively at the same price as Pages, and add what an online game needs in the same deployment: Durable Objects and Containers, the Cloudflare Vite plugin (dev runs the real room code), gradual deployments, rate limiting, logs and queues. Descent is purely static, so Pages costs it nothing. Revised from a Pages project before anything deployed; detail in `docs/arena/DECISIONS.md` D-022. |
 | D6 | Repositories | **Descent stays in `falvarez1/alchemists-descent`** (no rename; its URLs do not change). **CLASHFORGED is a new private repository, `falvarez1/clashforged`**, created from `main` with the full history. | The history keeps `git log` and blame working, lets a branch made before the copy be pushed to either repository, and lets early fixes cherry-pick cleanly. |
 | D7 | Package manager | **npm in both**, as today | pnpm workspaces were for the monorepo. |
 | D8 | Order of work | **Copy first, then each repository deletes the other game, in parallel** | Untangling before the copy only pays when the copies keep sharing code. Here each side's untangling is a deletion in its own repository. |
@@ -141,6 +141,9 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
    git) to `docs/arena/platform-fighter/sprite-library` in that checkout, where it stays ignored.
 
 - **Exit:** both repositories build, test and pass their gate probes, unchanged (each still holds the whole game).
+- **Downstream: the Balance Lab starts in the new repository the day this phase lands** (`docs/arena/DECISIONS.md`
+  D-021, revised for two repositories). Until then every fighter change follows the interim routine in
+  `docs/arena/BALANCE-LAB-PLAN.md`.
 
 ### Phase 2: Descent deletes the arena (this repository)
 
@@ -170,6 +173,9 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
    - It is `Game.ts` without the campaign's systems: the run director, story, Sanctum, waves, mutators, brewing, the
      tea machine and flora.
    - The Duel lobby is the front door until Phase 4 builds the shell.
+   - Worth aiming for: a root that can play a match with no DOM, WebGL or audio. The Balance Lab's first measurement
+     (BL0.5 in `docs/arena/BALANCE-LAB-PLAN.md`) decides whether its batch runner uses Node worker threads (an expected
+     5-10 times the throughput of headless pages) or browser pages.
 2. **Delete what nothing reaches:** the 219 modules, the campaign assets, the 141 Descent tests, and the Descent
    probes and docs.
 3. **Trim the 113 kept modules** by cutting their 145 imports.
@@ -179,7 +185,7 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
      prefabs and levels.
    - Rerun the survey after each cut and delete what it no longer reaches.
 4. **Training gets its own dummies**, registered by the Duel. Then the creature roster goes.
-5. **Storage.** CLASHFORGED is its own origin (`clashforged.pages.dev`, and another port in dev), so its
+5. **Storage.** CLASHFORGED is its own origin (its Worker's domain, and another port in dev), so its
    `localStorage` is already separate. Its keys still get their own prefix in place of `alchemists-descent-*` and
    `noita-*`.
 
@@ -195,7 +201,11 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 - **Brand:** `config/brand.ts`, favicon and `package.json` name.
 - **Its CI**: typecheck, lint, tests, build and its own browser checks.
 - **Its deploy:**
-  - the Cloudflare Pages project `clashforged` (D5), with its own `_headers` (COOP/COEP);
+  - its own Worker with static assets (D5): `_headers` (COOP/COEP) served natively, and the Duel room Durable Object
+    in the same deployment;
+  - in dev, the Cloudflare Vite plugin runs the room in Cloudflare's runtime inside the Vite server, so dev and
+    production run the same room code. It replaces the Node `ws` plugin (`servers/duel/server.ts`); the room logic
+    (`servers/duel/Room.ts`, already free of sockets and browser APIs) is hosted once;
   - a hosted probe like `verify-hosted-game`;
   - its own deploy skill;
   - its own `AUTHORLINK_URL` variable and Cloudflare credentials. No relay token ships in a public build.
@@ -212,7 +222,9 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 - **Tooling** is copied once and then owned by each repository: the probe harness (`run-helpers`, `browser-launch`),
   the ElevenLabs client and the perf benches. The paid ElevenLabs cache on this machine stays shared.
 - **The Balance Lab** (`docs/arena/BALANCE-LAB.md`) is CLASHFORGED tooling and is built in the CLASHFORGED
-  repository. Work started before the copy moves there with its branch.
+  repository, starting the day the copy lands (D-021 as revised). It keeps this repository's layout, so its planned
+  paths are final: `src/content/fighters/sheets/`, `src/fighters/analysis/`, `lab.html` with `src/lab/`, `src/dev/`
+  and `tools/lab/`.
 
 ## 6. Risks
 
@@ -225,11 +237,13 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
 | A secret or variable is missing in the new repository | Phase 4 adds `AUTHORLINK_URL` and the Cloudflare credentials; no relay token in a public build |
 | A bug fixed in one repository lives on in the other | Accepted (D1); port it while the histories are close |
 | The untracked sprite library is lost | It moves by hand in Phase 1 and stays ignored |
+| The copy slips, and balance tooling waits with it (the Lab starts the day it lands, D-021) | The copy is short and comes first; the interim balance routine (`docs/arena/BALANCE-LAB-PLAN.md`) covers every fighter change until then |
 
 ## 7. Open questions (recommendation first)
 
-- **The AuthorLink relay for CLASHFORGED:** its own worker on the Ajar Red account (recommended), because the
-  protocol and tuning ranges will diverge; or share Descent's relay, with both origins allowlisted.
+- **The AuthorLink relay for CLASHFORGED:** a Durable Object in CLASHFORGED's own Worker, beside the Duel rooms
+  (recommended: one deployment, as D5 argues, and the protocol and tuning ranges will diverge); or share Descent's
+  relay, with both origins allowlisted.
 - **CLASHFORGED's dev port:** 5175 (recommended), so both dev servers can run side by side.
 - **CLASHFORGED's visibility:** private until it launches, then decide.
 
@@ -243,13 +257,14 @@ The first version of this plan (PR #20) kept one repository: a pnpm monorepo wit
   and enemies, and a `Ctx` split by declaration merging. Its boundary ratchet started at 204 forbidden imports.
 - **It was dropped (D1)** once it was clear that the two engines will diverge. That work would have bought a shared
   engine neither game wants.
-- **Phase 0 carried over:** the oracles, the gate probes and the import survey, now the pruning map. The ratchet test
-  did not, because it enforced the monorepo's package layout.
+- **Carried over:** D2, D3 and D5 (with its revision to a Worker, D-022), and Phase 0's oracles, gate probes and
+  import survey, now the pruning map. The ratchet test did not, because it enforced the monorepo's package layout.
 
-The full text is in git at `e81d94e`.
+The full text is in git at `e81d94e`, and with its D5 revision and the Balance Lab note at `0e800ec`.
 
 ## 9. Out of scope
 
-- Online (non-LAN) Duel hosting: a Durable Object later, as its own project.
+- Online (non-LAN) Duel play: rooms, authentication, rate limiting and latency handling. D5 hosts it in the same Worker
+  as the game (a Durable Object per room, Containers later for server-run matches); building it is its own project.
 - New arena features: match modes, more fighters, bots beyond today's.
 - The root port references (`noita-sandbox.html` and friends): Descent keeps them; CLASHFORGED may delete them.
