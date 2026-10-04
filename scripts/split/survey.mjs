@@ -62,7 +62,7 @@ const ARENA_NAMED = /^(arena|fighters)\/|^render\/(duel|player\/looks)\/|^net\/d
 const RULES = [
   ['kernel', /^game\/Game\.ts$/], // the composition root: splits into the engine kernel + one root per app
   ['ui-kit', /^ui\/foundryKit\.ts$/],
-  ['fighters', /^fighters\/(?!telemetry\/fightHarness)|^content\/fighter(s|Bodies|Loadouts|Techniques)\.ts$|^core\/fighter(s|Body)\.ts$|^render\/player\/(looks\/|FighterArt|fighterLook)|^render\/(FighterFx|fighterReveal)\.ts$/],
+  ['fighters', /^fighters\/(?!telemetry\/\w+Harness)|^content\/fighter(s|Bodies|Loadouts|Techniques)\.ts$|^core\/fighter(s|Body)\.ts$|^render\/player\/(looks\/|FighterArt|fighterLook)|^render\/(FighterFx|fighterReveal)\.ts$/],
   ['clashforged', /^config\/ai\w+\.ts$|^game\/console\/(arena|fighters|ai)\.ts$/],
   ['clashforged', (m) => ARENA_NAMED.test(m) && !NOT_ARENA.test(m)],
   ['authoring', /^builder\/|^app\/(AuthorLink\w*|BuilderHost|BuilderLauncher|LinkControl|authorLink\w*|builder\w*)\.ts$|^net\/(AuthorLinkClient|authorLinkProtocol|tuningPatch)\.ts$/],

@@ -1,6 +1,6 @@
 # Splitting the repository into two games
 
-Status: **plan, approved decisions, nothing moved yet** (2026-10-04, branch `feature/split-clashforged`, from main `5527cc4`).
+Status: **plan, approved decisions, nothing moved yet** (2026-10-04, branch `feature/split-clashforged`, baseline main `0437216`).
 
 The Duel has grown into its own game. This plan turns one repository that ships one game into one repository that ships
 two, sharing a single engine:
@@ -31,7 +31,7 @@ Each one was chosen for the long-term architecture, not for the least work.
 assigns each module to its target package by first-cut ownership rules, and lists every import that crosses a
 boundary the target layout forbids. Full detail goes to `verify-out/split/survey.json`. Rerun it after every phase.
 
-Baseline at `5527cc4`:
+Baseline at `0437216`:
 
 | Target | Modules | Lines |
 |---|---:|---:|
@@ -39,17 +39,17 @@ Baseline at `5527cc4`:
 | `packages/engine` | 282 | 81,133 |
 | `packages/authoring` (Builder, AuthorLink) | 54 | 33,273 |
 | `packages/fighters` | 60 | 17,015 |
-| `apps/clashforged` | 95 | 15,617 |
+| `apps/clashforged` | 97 | 16,798 |
 | `game/Game.ts` (the composition root, splits in Phase 2) | 1 | 1,230 |
 
-**247 forbidden edges:**
+**248 forbidden edges:**
 
 | From → to | Edges | Files | What it is |
 |---|---:|---:|---|
 | engine → descent | 92 | 50 | The renderer draws the tea machine, flora and organisms. `Player`, `Enemies` and the wands import campaign content (mutators, perks, enemy defs, reward pools). Audio imports the score, narration and lore. |
 | authoring → descent | 84 | 23 | The Builder reads campaign content directly: palette, prefabs, enemy defs, levels, backdrops, asset database. |
 | engine → clashforged | 19 | 12 | `Player` (arena rules, stock movement), physics, lighting, camera, `FrameComposer` (stage art, KO fx), `PlayerSprite`, audio, input (pads, versus devices), `core/types.ts`. |
-| clashforged ↔ descent | 26 | 16 | `Levels` builds the Duel stages, `PauseOverlay` knows stocks, the title and run carry a fighter, the console has arena commands. |
+| clashforged ↔ descent | 27 | 16 | `Levels` builds the Duel stages, `PauseOverlay` knows stocks, the title and run carry a fighter, the console has arena commands. |
 | descent / engine → fighters | 17 | 14 | Runs, meta profile, title model, events, sprites. |
 | other | 9 | | |
 
@@ -62,8 +62,8 @@ Arena code itself leans on `ctx.enemies` / `ctx.enemyCtl` (kits target foes; the
 projectiles, spells, physics, rigid bodies and particles. The enemy **framework** and combat are therefore engine
 code, even though the creature **roster** is Descent content.
 
-**Tests** split cleanly: 143 Descent, 49 CLASHFORGED, 80 engine, 8 both (`ai-*`, `player-sprite-visibility`,
-`title-menu-model`). **Scripts**: 69 of the 421 runnable scripts are arena probes and tools.
+**Tests** split cleanly: 143 Descent, 50 CLASHFORGED, 80 engine, 8 both (`ai-*`, `player-sprite-visibility`,
+`title-menu-model`). **Scripts**: 74 of the 426 runnable scripts are arena probes and tools.
 
 ## 3. Target layout
 
