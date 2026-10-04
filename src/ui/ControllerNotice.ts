@@ -24,7 +24,7 @@ export class ControllerNotice {
   private readonly refresh = (): void => {
     const connected = Array.from(navigator.getGamepads?.() ?? []).some(p => p?.connected && p.mapping === 'standard');
     const relevant = this.ctx.state.mode === 'play' && (this.ctx.arena?.active || this.ctx.versus?.phase === 'playing');
-    if (!relevant || connected || this.dismissed) { this.root?.remove(); this.root = null; return; }
+    if (!relevant || connected || this.dismissed || this.ctx.duel?.active) { this.root?.remove(); this.root = null; return; }
     if (this.root) return;
     const root = document.createElement('div');
     root.className = 'controller-notice'; root.setAttribute('role', 'status');

@@ -41,8 +41,10 @@ describe('local versus lifecycle', () => {
   });
   it('starts a disposable fixed-difficulty match only after readiness and preserves the existing save contract', async () => {
     const { session, starts, ctx } = setup(); session.open();
+    ctx.state.arrivalGraceUntil = 330;
     expect(await session.start()).toBe(false); session.ready(0);
     expect(await session.start()).toBe(true); expect(session.phase).toBe('playing'); expect(ctx.state.paused).toBe(false);
+    expect(ctx.state.arrivalGraceUntil).toBe(0);
     expect(starts).toEqual([{ mode: 'test', worldSource: 'campaign-level', levelId: 'fighter-duel', fighter: 'ilyra-voss', loadout: 'advanced', difficulty: 3, presentation: 'versus' }]);
     session.dispose();
   });

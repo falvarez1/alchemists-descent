@@ -30,7 +30,7 @@ export class StockMatchHud {
     this.rematch.addEventListener('click', () => { this.rematch.blur(); onRematch(); });
     this.root.append(this.timer, this.message, this.rematch);
     this.change.className = 'stock-change'; this.change.type = 'button'; this.change.textContent = 'Change fighters';
-    this.change.addEventListener('click', () => this.ctx.versus?.open()); this.root.append(this.change);
+    this.change.addEventListener('click', () => { if (this.ctx.duel?.active) this.ctx.duel.lobby(); else this.ctx.versus?.open(); }); this.root.append(this.change);
     this.result.className = 'stock-result'; this.result.hidden = true;
     this.result.setAttribute('aria-label', 'Match result'); this.resultBody.className = 'stock-result-body'; this.root.append(this.result);
     this.hint.className = 'stock-controls';
@@ -124,7 +124,9 @@ export class StockMatchHud {
     if (this.message.textContent !== message) this.message.textContent = message;
     this.message.hidden = message === '';
     this.rematch.hidden = match.state !== 'finished';
-    this.change.hidden = match.state !== 'finished' || !this.ctx.versus?.active;
+    this.rematch.disabled = this.ctx.duel?.replica === true;
+    this.change.hidden = match.state !== 'finished' || (!this.ctx.versus?.active && !this.ctx.duel?.active);
+    this.change.disabled = this.ctx.duel?.replica === true;
   }
 
   dispose(): void { cancelAnimationFrame(this.raf); for (const off of this.offs) off(); this.root.remove(); document.body.classList.remove('stock-match'); }

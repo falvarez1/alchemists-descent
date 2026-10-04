@@ -56,6 +56,8 @@ export interface EventMap {
   fighterHit: { by: number; victim: number; damage: number; tick: number; attack?: string };
   arenaReset: undefined;
   versusChanged: undefined;
+  duelChanged: undefined;
+  duelOpen: undefined;
   versusPause: undefined;
   versusMenu: { action: 'previous' | 'next' | 'confirm' | 'back' };
   /** Death UI should clear without triggering gameplay respawn side effects. */

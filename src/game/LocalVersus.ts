@@ -1,7 +1,7 @@
 import type { Ctx } from '@/core/types';
 import type { VersusApi, VersusDevice, VersusPhase, VersusSeat } from '@/core/versus';
 import { FIGHTER_ORDER, type FighterId } from '@/content/fighters';
-import { STOCK_STAGE } from '@/config/stockStage';
+import { prepareDuel } from '@/game/prepareDuel';
 import { resetDuelStage } from '@/world/duelStage';
 import { botDriverFor, rivalDriverFor } from '@/arena/ai/driver';
 import { readVersusPad, VersusDevices } from '@/input/versusDevices';
@@ -89,19 +89,7 @@ export class LocalVersus implements VersusApi {
     const revision = ++this.revision;
     this.phase = 'loading'; this.message = 'Opening the Foundry…'; this.changed();
     try {
-      if (!(await this.playReady())) throw new Error('The game could not finish loading. Try again.');
-      if (revision !== this.revision) return false;
-      const result = ctx.levels.startRun(ctx, { mode: 'test', worldSource: 'campaign-level', levelId: 'fighter-duel', fighter: this.seats[0].fighter, loadout: 'advanced', difficulty: 3, presentation: 'versus' });
-      ctx.state.paused = true;
-      if (!result.ok) throw new Error(result.message);
-      await ctx.fighters?.whenReady();
-      if (revision !== this.revision) return false;
-      arena.configureStocks(STOCK_STAGE.zone); resetDuelStage(ctx); arena.setSpawns(STOCK_STAGE.spawns);
-      const spawn = STOCK_STAGE.spawns[1];
-      const joined = await arena.addRival(this.seats[1].fighter, spawn.x, spawn.y);
-      if (revision !== this.revision) return false;
-      if (joined < 0) throw new Error('The rival could not join. Try the match again.');
-      arena.reset();
+      if (!(await prepareDuel(ctx, this.seats.map(s => s.fighter), this.playReady, () => revision === this.revision))) return false;
       botDriverFor(ctx).off(); rivalDriverFor(ctx, 1)?.off();
       for (let slot = 0; slot < 2; slot++) if (this.seats[slot].device === 'cpu') {
         (slot === 0 ? botDriverFor(ctx) : rivalDriverFor(ctx, slot))?.install('basic', this.seats[slot].cpuLevel);

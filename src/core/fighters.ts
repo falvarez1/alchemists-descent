@@ -100,6 +100,8 @@ export interface FighterApi {
   readonly view: FighterView;
   /** Everything the kit has placed in the world right now, for the renderer to walk. */
   readonly drawables: readonly FighterDrawable[];
+  /** Render-only network replicas install observable state without ticking a kit. */
+  applyPresentation?(view: FighterView, body: BodyProfile, concealment: number, drawables: FighterDrawable[]): void;
   /**
    * The fighter's BODY now: its profile composed with its running effects (a glide's lowered gravity). Every field is a
    * multiplier on the Alchemist, and the classic Alchemist (no fighter) gets `NEUTRAL_BODY`. `entities/Player` reads it

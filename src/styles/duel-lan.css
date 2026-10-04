@@ -1,0 +1,112 @@
+#duel-network {
+  position: fixed;
+  inset: 0;
+  z-index: 225;
+  overflow: auto;
+  background: #0d1823fa;
+  color: #e8dcc0;
+  font-family: var(--m-sans, system-ui, sans-serif);
+}
+#duel-network[hidden],
+#duel-network [hidden],
+#duel-network-bar[hidden] {
+  display: none !important;
+}
+#duel-network button,
+#duel-network select,
+#duel-network input,
+#duel-network-bar button {
+  border: 1px solid #ac744b;
+  background: #182b3a;
+  color: #e8dcc0;
+  min-height: 40px;
+  padding: 8px 12px;
+  font:
+    14px/1.3 system-ui,
+    sans-serif;
+  border-radius: 0;
+}
+#duel-network button,
+#duel-network-bar button {
+  cursor: pointer;
+}
+#duel-network button:disabled,
+#duel-network select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#duel-network :focus-visible,
+#duel-network-bar :focus-visible {
+  outline: 3px solid #65cac5;
+  outline-offset: 3px;
+}
+.duel-connect,
+.duel-connect form,
+.duel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 20px;
+}
+.duel-connect input {
+  width: 8em;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+.duel-address,
+.duel-status,
+.duel-help,
+.duel-room-code {
+  text-align: center;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.duel-address,
+.duel-help {
+  font-size: 12px;
+  color: #b7c9ca;
+}
+.duel-room-code {
+  color: #efac58;
+  font-size: 20px;
+  letter-spacing: 0.06em;
+}
+.duel-status {
+  color: #65cac5;
+}
+#duel-network .versus-seat select {
+  width: 100%;
+}
+#duel-network-bar {
+  position: fixed;
+  top: 8px;
+  right: 12px;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #e8dcc0;
+  background: #111d28e8;
+  padding: 4px 8px;
+  font:
+    12px system-ui,
+    sans-serif;
+}
+@media (max-width: 700px) {
+  #duel-network .versus-seats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  #duel-network .versus-shell {
+    margin: 12px;
+    padding: 18px 12px;
+  }
+  #duel-network .versus-seat {
+    min-height: 190px;
+  }
+  #duel-network .versus-header h1 {
+    font-size: 36px;
+  }
+}

@@ -33,6 +33,10 @@ import { createPlayer, PlayerControl } from '@/entities/Player';
 import { ChillSystem } from '@/game/Chill';
 import { FighterSystem } from '@/fighters/FighterSystem';
 import { ArenaSlots } from '@/arena/ArenaSlots';
+import { DuelRuntime } from '@/game/DuelRuntime';
+import { DuelSession } from '@/net/duel/DuelSession';
+import { WebSocketTransport } from '@/net/SessionTransport';
+import { DuelLobby } from '@/ui/DuelLobby';
 import { LocalVersus } from '@/game/LocalVersus';
 import { VersusLobby } from '@/ui/VersusLobby';
 import { StockMatchHud } from '@/ui/StockMatchHud';
@@ -507,8 +511,13 @@ export class Game {
     if (__AUTHORING__) this.disposables.push(new FighterArenaPanel(ctx));
     const versus = new LocalVersus(ctx, () => this.loadPlaySystems().then(systems => systems !== null));
     ctx.versus = versus;
+    const duelRuntime = new DuelRuntime(ctx, lighting, () => this.renderer.domElement, () => this.loadPlaySystems().then(systems => systems !== null));
+    const duel = new DuelSession(() => new WebSocketTransport({ url: `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/__duel` }), duelRuntime, __BUILD_STAMP__, () => ctx.events.emit('duelChanged'));
+    ctx.duel = duel;
+    this.disposables.push(duelRuntime, duel, new DuelLobby(ctx));
     this.disposables.push(versus, new VersusLobby(ctx), new StockMatchHud(ctx, () => {
-      if (versus.active) versus.rematch();
+      if (duel.active) duel.rematch();
+      else if (versus.active) versus.rematch();
       else { resetDuelStage(ctx); ctx.arena?.reset(); }
     }));
     // The story's dialogue box (Pell) with its interact prompt, and the opening/ending plates.
@@ -808,6 +817,15 @@ export class Game {
     if (this.headless) return;
     if (this.workshopPending) this.settleDeferredWorkshop();
     if (this.sandboxPool !== null && !this.sandboxPool.isStarted) this.settleSandboxPool();
+    const duelChanged = this.ctx.duel?.frame(now);
+    // Replicas render authoritative state. They never run cell, fighter, damage,
+    // pickup, or save ticks, even when a menu or debug step asks to advance.
+    if (this.ctx.duel?.replica) {
+      this.clock.advance(now, Game.STEP_MS, true);
+      this.composeDirty ||= duelChanged === true;
+      this.renderFrame(performance.now(), 0);
+      return;
+    }
     // Poll on presentation frames so Start can also resume a paused simulation.
     this.pollInput();
     // Death slow-mo: stretch the wall-clock cost of a tick so the sim advances
@@ -927,6 +945,7 @@ export class Game {
 
   private updateFixedTick(options: { forcePaused?: boolean } = {}): void {
     const ctx = this.ctx;
+    if (ctx.duel?.replica) return;
     if (ctx.state.paused && options.forcePaused !== true) return;
     const tickStart = performance.now();
     this.composer.capturePoses(ctx);
@@ -936,6 +955,7 @@ export class Game {
     // draw inside the tick is a function of (worldSeed, tick) alone. The cell
     // sim reseeds itself per substep — see Simulation.processFrame.
     reseedTickStreams(ctx.state.worldSeed, ctx.state.frameCount);
+    ctx.duel?.beforeTick();
 
     // Expedition autosave: every ~30s of play, a closed tab costs nothing.
     if (
@@ -1066,7 +1086,7 @@ export class Game {
       // A fight recorder samples after every system has run (dev only: null, and one check, otherwise).
       fightSink?.tick();
     }
-
+    ctx.duel?.afterTick();
   }
 
   private renderFrame(frameWorkStart = performance.now(), tickCount = 0): void {
