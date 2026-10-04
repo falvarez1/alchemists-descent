@@ -28,6 +28,47 @@ function setup(prepare: DuelRuntime['prepare'] = async () => true) {
   return { session, runtime, links, time: (value: number) => { now = value; session.frame(value); } };
 }
 describe('transport-independent Duel lifecycle', () => {
+  it('timestamps pings when sent, excluding time spent before the frame callback', () => {
+    const { session, links, time } = setup(); session.host();
+    links[0].receive({ type: 'welcome', slot: 0, token: 'a'.repeat(48), state: lobby() });
+    time(2000);
+    links[0].messages.length = 0;
+    session.frame(3500); // rAF timestamps and the injected monotonic clock can differ.
+    expect(links[0].messages.map(s => JSON.parse(s))).toContainEqual({ type: 'ping', at: 2000 });
+  });
+  it('sends input edges without waiting for a presentation frame', async () => {
+    const { session, links, runtime } = setup(); session.join('ABCDEF');
+    const link = links[0], state = { ...lobby(), epoch: 1, phase: 'loading' as const };
+    link.receive({ type: 'welcome', slot: 1, token: 'a'.repeat(48), state });
+    await Promise.resolve(); await Promise.resolve();
+    link.receive({ type: 'room', state: { ...state, phase: 'playing' } });
+    runtime.sample = () => ({ buttons: 64, aim: 0 });
+    session.flushInput();
+    expect(link.messages.map(s => JSON.parse(s))).toContainEqual({ type: 'input', epoch: 1, seq: 1, buttons: 64, aim: 0 });
+    link.receive({ type: 'room', state: { ...state, phase: 'paused' } });
+    const count = link.messages.length;
+    session.flushInput();
+    expect(link.messages).toHaveLength(count);
+  });
+  it('publishes at 30 Hz without periodic baselines and still honors resync and backpressure', async () => {
+    const { session, runtime, links, time } = setup(); session.host();
+    const link = links[0], state = { ...lobby(), epoch: 1, phase: 'loading' as const };
+    link.receive({ type: 'welcome', slot: 0, token: 'a'.repeat(48), state });
+    await Promise.resolve(); await Promise.resolve();
+    runtime.capture = vi.fn(meta => ({ snapshot: { ...snapshotFixture(), ...meta }, cells: createCellPatch() }));
+    link.receive({ type: 'room', state: { ...state, phase: 'playing' } });
+    session.afterTick();
+    expect(runtime.capture).toHaveBeenLastCalledWith(expect.objectContaining({ baseline: true }));
+    time(34); session.afterTick();
+    expect(runtime.capture).toHaveBeenCalledTimes(2);
+    time(6000); session.afterTick();
+    expect(runtime.capture).toHaveBeenLastCalledWith(expect.objectContaining({ baseline: false }));
+    link.receive({ type: 'resync' });
+    link.bufferedBytes = 300_000; time(6100); session.afterTick();
+    expect(runtime.capture).toHaveBeenCalledTimes(3);
+    link.bufferedBytes = 0; time(6200); session.afterTick();
+    expect(runtime.capture).toHaveBeenLastCalledWith(expect.objectContaining({ baseline: true, seq: 4, base: 3 }));
+  });
   it('accepts a new guest starting at sequence one after the host creates another room', async () => {
     const { session, links, runtime } = setup();
     for (const sequence of [1000, 1]) {

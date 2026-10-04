@@ -69,32 +69,45 @@ for both LAN and local versus, with countdown/respawn protection owning immunity
 
 ## Replication
 
-Inputs are sequenced, bounded bitmasks plus an aim angle. The host latches press
+Inputs are sequenced, bounded bitmasks plus an aim angle. Keyboard and pointer
+button edges send immediately; frame polling maintains held input and controllers.
+The host latches press
 edges and their direction across ticks and releases stalled input after 500 ms.
 Only the guest seat's inputs are forwarded to the host. Client positions, damage,
 and outcomes are not accepted as control commands.
 
-At most 20 times per second, the host publishes a versioned binary frame holding
+At most 30 times per second, the host publishes a versioned binary frame holding
 JSON presentation state and a packed terrain delta. Each frame has a match epoch,
 sequence, base sequence, and baseline marker. The terrain and presentation apply
 atomically. Backpressure defers capture, preserving the last successfully sent
 terrain as the comparison point; a failed send requires a fresh baseline. Guests
 reject stale epochs, duplicates, and deltas with missing predecessors. Baselines
-are sent on start/resume/resync and periodically every five seconds.
+are sent on start/resume/resync. Reliable ordered delivery does not need recurring
+full-world transfers during steady play.
 
 Snapshots include both player poses and costumes, stock/attack/defense views,
 fighter ability readouts, projectiles, particles, lights, camera and audio cues.
-Guest positions interpolate one snapshot interval behind the host; respawns and
-large teleports snap. Existing kit effects use closure-owned drawing code, so a
+The guest's own fighter displays the latest confirmed position immediately. The
+opponent interpolates one snapshot interval behind; respawns and large teleports
+snap. The guest composes a new frame only when received state or interpolation
+changes, instead of rebuilding an unchanged scene on every display frame.
+Existing kit effects use closure-owned drawing code, so a
 compatibility adapter captures bounded world-space pixel commands for those
 effects only (24,000 pixels per fighter per snapshot). These commands are cosmetic;
 they never affect collision. Semantic kit visual data would reduce this bandwidth.
 
-The terrain tracker currently scans the grid on each publication. Baselines,
+The terrain tracker scans the grid on each publication, skipping shadow writes
+for unchanged cells while preserving detection of raw simulation plane writes. Baselines,
 busy terrain and complex kit effects can be expensive. This first LAN version has
 no client prediction, rollback, lag compensation, Internet matchmaking, or dedicated
 simulation server. Do not treat LAN latency or two local browser processes as proof
 of Internet performance or competitive fairness.
+
+The toolbar's **Ping** is the browser-to-LAN-server round trip, measured from
+send time. The host usually connects through localhost, so its ping is expected
+to be lower. This number does not include waiting for the host simulation and
+the next visible snapshot. A persistent 160 ms guest ping still needs a real
+two-computer check: compare idle versus fighting and wired versus Wi-Fi.
 
 ## Replacing the backend
 
@@ -128,6 +141,10 @@ npm run dev:lan
 npm run verify:duel-lan
 # Optional: exercise the LAN HTTP origin and its browser restrictions:
 node scripts/verify-duel-lan.mjs http://YOUR-LAN-IP:5180/
+# Profile capture/receive costs and input-to-visible-movement in two browsers:
+node scripts/verify-duel-latency.mjs
+# Inject 80 ms each way (160 ms added round trip) at the guest transport:
+node scripts/verify-duel-latency.mjs http://127.0.0.1:5180/ 80
 ```
 
 The browser probe checks host/join, fighter ownership, remote movement and melee,

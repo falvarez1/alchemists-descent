@@ -25,4 +25,16 @@ describe('Duel terrain and trust boundaries', () => {
       { type: 'damage', slot: 0, amount: 900 }, { type: 'choose', fighter: 'invented' },
     ]) expect(parseClientMessage(JSON.stringify(value))).toBeNull();
   });
+  it('captures raw plane writes immediately and retains empty-cell shadows across a new baseline', () => {
+    const host = new World(67, 65), guest = new World(67, 65), writer = new TerrainReplicator();
+    const index = host.types.length - 1;
+    writer.capture(host, true);
+    host.types[index] = 13; host.colors[index] = 0x123456; host.life[index] = 17; host.charge[index] = 8;
+    applyCellPatch(guest, writer.capture(host, false));
+    expect([guest.types[index], guest.colors[index], guest.life[index], guest.charge[index]]).toEqual([13, 0x123456, 17, 8]);
+    host.clear(); writer.capture(host, true);
+    expect(writer.capture(host, false).idxs).toHaveLength(0);
+    host.colors[index] = 0xabcdef;
+    expect(writer.capture(host, false).idxs).toEqual([index]);
+  });
 });

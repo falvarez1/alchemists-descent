@@ -23,6 +23,7 @@ export class DuelRuntime implements RuntimeContract {
   private latest: DuelSnapshot | null = null;
   private previous: DuelSnapshot | null = null;
   private receivedAt = 0;
+  private presentationDirty = false;
   private readonly sounds: DuelSnapshot['sounds'] = [];
   private restoreAudio: (() => void) | null = null;
   constructor(
@@ -63,6 +64,7 @@ export class DuelRuntime implements RuntimeContract {
     this.controls.clear();
     this.latest = this.previous = null;
     const c = this.ctx;
+    this.presentationDirty = false;
     c.arena?.removeRival(1);
     c.arena?.configureStocks(null);
     setExternalControl(c.input, false);
@@ -251,6 +253,7 @@ export class DuelRuntime implements RuntimeContract {
     this.previous = this.latest;
     this.latest = snapshot;
     this.receivedAt = now;
+    this.presentationDirty = true;
     c.state.frameCount = snapshot.tick;
     for (const slot of [0, 1]) {
       const b = c.arena.bundle(slot)!,
@@ -276,23 +279,32 @@ export class DuelRuntime implements RuntimeContract {
       if (!(key in data)) delete (player as unknown as Record<string, unknown>)[key];
     Object.assign(player, structuredClone(data));
   }
-  present(now: number): void {
+  present(now: number): boolean {
+    let changed = this.presentationDirty;
+    this.presentationDirty = false;
     const latest = this.latest,
       prev = this.previous;
-    if (!latest || !prev) return;
+    if (!latest || !prev) return changed;
     const interval = Math.max(16, Math.min(150, ((latest.tick - prev.tick) * 1000) / 60));
     const alpha = Math.min(1, Math.max(0, (now - this.receivedAt) / interval));
     for (const slot of [0, 1]) {
+      // The controlled fighter uses the latest confirmed pose immediately.
+      // Delaying it for smoothing adds a full snapshot interval to every action.
+      if (slot === this.ctx.duel?.slot) continue;
       const p = this.ctx.arena?.bundle(slot)?.player;
       if (!p) continue;
       const a = prev.fighters[slot].player,
         b = latest.fighters[slot].player;
       // Respawns, teleports and ring-outs snap. Interpolating them crosses the stage.
       if (Math.hypot(b.x - a.x, b.y - a.y) < 100 && a.dead === b.dead) {
-        p.x = a.x + (b.x - a.x) * alpha;
-        p.y = a.y + (b.y - a.y) * alpha;
+        const x = a.x + (b.x - a.x) * alpha;
+        const y = a.y + (b.y - a.y) * alpha;
+        changed ||= p.x !== x || p.y !== y;
+        p.x = x;
+        p.y = y;
       }
     }
+    return changed;
   }
   dispose(): void {
     this.stop();

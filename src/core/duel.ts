@@ -23,8 +23,10 @@ export interface DuelApi {
   resume(): void;
   rematch(): void;
   lobby(): void;
-  /** Presentation frame housekeeping, including reconnect and input sampling. */
-  frame(now: number): void;
+  /** Send local button edges immediately, independently of rendering. */
+  flushInput(): void;
+  /** Frame housekeeping; true when the replica presentation changed. */
+  frame(now: number): boolean;
   /** Authority only, at the normal fixed-step input boundary. */
   beforeTick(): void;
   afterTick(): void;

@@ -52,16 +52,19 @@ export class DuelControls {
     if (!bit) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    const previous = this.held;
     if (event.type === 'keydown') {
       if (!(this.held & bit)) this.taps |= bit;
       this.held |= bit;
     } else this.held &= ~bit;
+    if (this.held !== previous) duel.flushInput();
   };
   private readonly move = (event: PointerEvent): void => {
     if (event.target === this.canvas()) this.pointer = { x: event.clientX, y: event.clientY };
   };
   private readonly mouse = (event: PointerEvent): void => {
     if (!this.ctx.duel?.playing || event.button !== 0) return;
+    const previous = this.held;
     if (event.type === 'pointerup') this.held &= ~B.special;
     else if (event.target === this.canvas()) {
       this.held |= B.special;
@@ -69,6 +72,7 @@ export class DuelControls {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
+    if (this.held !== previous) this.ctx.duel.flushInput();
   };
   readonly clear = (): void => {
     this.held = this.taps = 0;

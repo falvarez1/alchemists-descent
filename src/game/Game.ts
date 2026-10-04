@@ -817,12 +817,12 @@ export class Game {
     if (this.headless) return;
     if (this.workshopPending) this.settleDeferredWorkshop();
     if (this.sandboxPool !== null && !this.sandboxPool.isStarted) this.settleSandboxPool();
-    this.ctx.duel?.frame(now);
+    const duelChanged = this.ctx.duel?.frame(now);
     // Replicas render authoritative state. They never run cell, fighter, damage,
     // pickup, or save ticks, even when a menu or debug step asks to advance.
     if (this.ctx.duel?.replica) {
       this.clock.advance(now, Game.STEP_MS, true);
-      this.composeDirty = true;
+      this.composeDirty ||= duelChanged === true;
       this.renderFrame(performance.now(), 0);
       return;
     }

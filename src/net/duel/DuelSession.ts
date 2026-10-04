@@ -21,7 +21,8 @@ export interface DuelRuntime {
     cells: CellPatch;
   };
   receive(snapshot: DuelSnapshot, cells: CellPatch, now: number): boolean;
-  present(now: number): void;
+  /** True when new state or interpolation requires composing the replica. */
+  present(now: number): boolean;
 }
 
 /** Room lifecycle above an injected transport. SpacetimeDB-specific reducers,
@@ -52,7 +53,6 @@ export class DuelSession implements DuelApi {
   private lastPing = 0;
   private lastHeard = 0;
   private nextSnapshot = 0;
-  private lastBaseline = 0;
   private sentSeq = 0;
   private receivedSeq = 0;
   private needsBaseline = true;
@@ -315,36 +315,40 @@ export class DuelSession implements DuelApi {
     this.inputs.forEach((i) => i.clear());
     this.runtime.clearInput();
   }
-  frame(now: number): void {
-    if (!this.active) return;
+  /** Event-driven edges bypass the presentation cadence; polling still covers controllers and held input. */
+  flushInput(): void {
+    if (!this.playing) return;
+    const now = this.now();
+    this.lastInput = now;
+    const input = { ...this.runtime.sample(), seq: ++this.inputSeq };
+    if (this.slot === 0) this.inputs[0].accept(input, now);
+    else this.send({ type: 'input', epoch: this.preparedEpoch, ...input });
+  }
+  frame(now: number): boolean {
+    if (!this.active) return false;
     this.runtime.pollControls?.();
     if (!this.connected && now >= this.nextConnect) {
       if (this.retry > 8 || now - this.disconnectedAt > 55_000) {
         this.fail('Connection could not be restored. Create a new room.');
-        return;
+        return false;
       }
       this.open();
     }
     if (!this.connected && this.transport && now - this.openedAt > 15_000) {
       this.disconnected();
-      return;
+      return false;
     }
     if (this.connected && now - this.lastHeard > (this.room?.phase === 'loading' ? 60_000 : 15_000)) {
       this.disconnected();
-      return;
+      return false;
     }
     if (this.connected && now - this.lastPing > 1000) {
       this.lastPing = now;
-      this.send({ type: 'ping', at: now });
+      this.send({ type: 'ping', at: this.now() });
     }
-    if (this.playing && now - this.lastInput >= 1000 / 60) {
-      this.lastInput = now;
-      const input = { ...this.runtime.sample(), seq: ++this.inputSeq };
-      if (this.slot === 0) this.inputs[0].accept(input, now);
-      else this.send({ type: 'input', epoch: this.preparedEpoch, ...input });
-    }
+    if (this.playing && now - this.lastInput >= 1000 / 60) this.flushInput();
     this.runtime.pause(!this.playing || this.replica);
-    if (this.replica) this.runtime.present(now);
+    return this.replica && this.runtime.present(now);
   }
   beforeTick(): void {
     if (!this.playing || this.slot !== 0) return;
@@ -365,8 +369,9 @@ export class DuelSession implements DuelApi {
       (this.transport.bufferedBytes ?? 0) > 256_000
     )
       return;
-    this.nextSnapshot = now + 50;
-    const baseline = this.needsBaseline || now - this.lastBaseline > 5000;
+    this.nextSnapshot = now + 1000 / 30;
+    // Ordered reliable delivery needs a baseline only for initialization or recovery.
+    const baseline = this.needsBaseline;
     try {
       const packet = this.runtime.capture({
         epoch: this.preparedEpoch,
@@ -381,7 +386,6 @@ export class DuelSession implements DuelApi {
       this.sentSeq++;
       this.snapshotCount++;
       this.needsBaseline = false;
-      if (baseline) this.lastBaseline = now;
     } catch (error) {
       this.fail(error instanceof Error ? error.message : 'Could not publish match state.');
     }

@@ -18,26 +18,31 @@ export class TerrainReplicator {
       baseline = true;
     }
     const patch = createCellPatch();
+    const { types, colors, life, charge } = world;
+    // Keep raw plane writes observable: simulation hot loops may bypass activity
+    // tracking. Unchanged cells need no shadow writes or patch allocations.
     for (let i = 0; i < size; i++) {
-      const t = world.types[i],
-        c = world.colors[i],
-        l = world.life[i],
-        q = world.charge[i];
+      const t = types[i], c = colors[i], l = life[i], q = charge[i];
       if (
         baseline
-          ? t !== 0 || l !== 0 || q !== 0
-          : t !== this.types[i] || c !== this.colors[i] || l !== this.life[i] || q !== this.charge[i]
-      ) {
-        patch.idxs.push(i);
-        patch.types.push(t);
-        patch.colors.push(c);
-        patch.life.push(l);
-        patch.charge.push(q);
-      }
+          ? t === 0 && l === 0 && q === 0
+          : t === this.types[i] && c === this.colors[i] && l === this.life[i] && q === this.charge[i]
+      ) continue;
+      patch.idxs.push(i);
+      patch.types.push(t);
+      patch.colors.push(c);
+      patch.life.push(l);
+      patch.charge.push(q);
       this.types[i] = t;
       this.colors[i] = c;
       this.life[i] = l;
       this.charge[i] = q;
+    }
+    if (baseline) {
+      this.types.set(types);
+      this.colors.set(colors);
+      this.life.set(life);
+      this.charge.set(charge);
     }
     return patch;
   }

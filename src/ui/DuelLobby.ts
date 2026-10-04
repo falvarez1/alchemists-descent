@@ -97,7 +97,8 @@ export class DuelLobby {
     const visible = this.opened && (!duel.connected || !room || room.phase !== 'playing');
     this.root.hidden = !visible;
     this.bar.hidden = !duel.active || !duel.connected || room?.phase !== 'playing';
-    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · ${duel.latency} ms`;
+    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · Ping ${duel.latency} ms`;
+    this.bar.querySelector('span')!.title = 'Round trip to the LAN server. The host connects locally; the other computer crosses your network.';
     document.body.classList.toggle('versus-active', duel.active || this.ctx.versus?.active === true);
     this.root.querySelector<HTMLElement>('.duel-connect')!.hidden = duel.active;
     this.root.querySelector<HTMLElement>('.versus-seats')!.hidden = !room;
