@@ -1,0 +1,37 @@
+{
+  "branch": "feature/brann-animation-completion",
+  "fighters": [
+    "ilyra-voss",
+    "brann-rook"
+  ],
+  "playableMeleeAttacksPerFighter": 10,
+  "armedRuntimeClipsPerFighter": 63,
+  "effectClips": {
+    "ilyra": 8,
+    "brann": 10
+  },
+  "fullSuite": {
+    "files": 287,
+    "tests": 3421,
+    "result": "pass"
+  },
+  "finalRendererRegression": {
+    "files": 3,
+    "tests": 6,
+    "result": "pass"
+  },
+  "finalKitRegression": {
+    "files": 3,
+    "tests": 122,
+    "result": "pass"
+  },
+  "typecheck": "pass",
+  "build": "pass",
+  "changedTypeScriptLint": "pass",
+  "animationPhases": 60,
+  "stateSamples": 46,
+  "ledgeGripError": 0,
+  "mirroredMuzzleError": 0,
+  "lan": "Two independent local browser clients passed; physical two-computer check not performed",
+  "deployed": false
+}

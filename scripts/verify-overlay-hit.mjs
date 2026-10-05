@@ -162,57 +162,6 @@ try {
       await page.evaluate(() => { const c = window.__game.ctx; c.sanctum.close?.(); c.state.paused = false; });
       await closeAll();
     }
-    if (want('versus')) {
-      // The Duel (ui/VersusLobby, ui/StockMatchHud, ui/PauseOverlay's Duel dress): the select screen's cyclers, stage
-      // tiles and READY; the Duel's own pause menu in a CPU match; then the match finished at once for the results card's
-      // Rematch and Change fighters (and Esc there must open no pause menu). The Sanctum step above can leave its
-      // shop up (nothing closes it there), so dismiss it, then come through the title's own door as a player does.
-      await page.evaluate(() => { window.__game.ctx.sanctum.dismiss?.(); window.dispatchEvent(new Event('expedition-title-request')); });
-      await page.locator('[data-entry="duel"]').click();
-      await probe('duel', '#versus-lobby', 500);
-      const begun = await page.evaluate(async () => { const v = window.__game.ctx.versus; v.chooseDevice(0, 'cpu'); const started = await v.start(); return { started, phase: v.phase, message: v.message, seats: v.seats.map(s => `${s.device}:${s.ready}`) }; });
-      const fighting = begun.started && await page.waitForFunction(() => window.__game.ctx.arena?.stockMatch?.state === 'fighting', null, { timeout: 30000 }).then(() => true, () => false);
-      if (!fighting) {
-        bad++;
-        const why = await page.evaluate(() => ({ match: window.__game.ctx.arena?.stockMatch?.state, level: window.__game.ctx.levels.current?.def.id, paused: window.__game.ctx.state.paused }));
-        console.log(`  FAIL  ${w}x${h} duel-start  the CPU match never began ${JSON.stringify({ ...begun, ...why })}`);
-        await page.close(); continue;
-      }
-      await page.waitForFunction(() => document.querySelector('.stock-banner')?.hidden !== false, null, { timeout: 5000 }).catch(() => {});
-      await page.keyboard.press('Escape');
-      const paused = await page.locator('#pause-overlay.visible.duel-pause').waitFor({ timeout: 5000 }).then(() => true, () => false);
-      if (!paused) { bad++; console.log(`  FAIL  ${w}x${h} duel-pause  Esc opened no Duel pause menu`); }
-      await probe('duel-pause', '#pause-overlay', 300);
-      await page.keyboard.press('Escape');
-      await page.locator('#pause-overlay.visible').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
-      await page.evaluate(() => {
-        const g = window.__game, c = g.ctx; c.state.paused = true;
-        // (a teleport during a respawn or a CPU recovery can be undone: try until the last stock is gone)
-        for (let tries = 0; tries < 40 && c.arena.stockMatch.state !== 'finished'; tries++) {
-          Object.assign(c.arena.bundle(1).player, { x: c.arena.stockStage.zone.right - 140, vx: 0, grounded: false });
-          for (let tick = 0; tick < 140; tick++) g.tick(false, { forcePaused: true });
-        }
-        c.state.paused = false;
-      });
-      // A card that never came up is a failure, not "0 controls".
-      const shown = await page.locator('.stock-result').waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);
-      if (!shown) {
-        bad++;
-        const why = await page.evaluate(() => ({ match: window.__game.ctx.arena?.stockMatch?.state, cards: document.querySelectorAll('.stock-result').length, hidden: document.querySelector('.stock-result')?.hidden, hud: document.getElementById('stock-match-hud')?.hidden, level: window.__game.ctx.levels.current?.def.id, mode: window.__game.ctx.state.mode }));
-        console.log(`  FAIL  ${w}x${h} duel-end  the results card never showed ${JSON.stringify(why)}`);
-      }
-      await probe('duel-end', '.stock-result', 600);
-      await page.keyboard.press('Escape'); await page.waitForTimeout(250);
-      if (await page.evaluate(() => document.querySelector('#pause-overlay.visible') !== null)) { bad++; console.log(`  FAIL  ${w}x${h} duel-end  Esc on the results opened the pause menu`); }
-      // The LAN lobby (ui/DuelLobby) from the select screen's footer: Host, the room code, Join, Back.
-      await page.evaluate(() => { window.__game.ctx.versus.open(); });
-      await page.locator('#versus-lobby').waitFor({ state: 'visible', timeout: 10000 });
-      const lan = await page.getByRole('button', { name: 'Play over LAN', exact: true }).boundingBox();
-      if (lan) await page.mouse.click(lan.x + lan.width / 2, lan.y + lan.height / 2);
-      await page.locator('#duel-network').waitFor({ state: 'visible', timeout: 10000 });
-      await probe('duel-lan', '#duel-network', 400);
-      await page.evaluate(() => { window.__game.ctx.duel?.leave(); window.__game.ctx.versus.close(); document.getElementById('duel-network').hidden = true; });
-    }
     if (errs.length) console.log('  page errors:', errs.slice(0, 3));
     await page.close();
   }

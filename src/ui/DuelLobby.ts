@@ -193,8 +193,13 @@ export class DuelLobby {
     const visible = this.opened && (!duel.connected || !room || room.phase !== 'playing');
     this.root.hidden = !visible;
     this.bar.hidden = !duel.active || !duel.connected || room?.phase !== 'playing';
-    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · ${duel.latency} ms`;
-    this.bar.querySelector('span')!.title = 'Round trip to the LAN server. The host connects locally; the other computer crosses your network.';
+    // The guest's number is the whole input round trip (send, the host's tick, its snapshot back); the host's own input
+    // crosses no network, so it shows its ping to the server.
+    const guest = duel.slot === 1 && duel.inputDelay > 0;
+    this.bar.querySelector('span')!.textContent = `LAN · P${(duel.slot ?? 0) + 1} · ${guest ? Math.round(duel.inputDelay) : duel.latency} ms`;
+    this.bar.querySelector('span')!.title = guest
+      ? 'Input round trip: from sending a button to the host’s answer arriving here, including the host’s tick.'
+      : 'Round trip to the LAN server. The host simulates the match on this computer.';
     document.body.classList.toggle('versus-active', duel.active || this.ctx.versus?.active === true);
     this.root.dataset.room = room ? room.phase : 'none';
     this.root.querySelector<HTMLElement>('.duel-connect')!.hidden = duel.active;
@@ -213,6 +218,8 @@ export class DuelLobby {
     const keys = getBindings();
     this.root.querySelector('.duel-help')!.innerHTML =
       `<span>${glyph(keyLabel(keys.left))}${glyph(keyLabel(keys.right))} move</span><span>${glyph(keyLabel(keys.jump))} jump</span><span>${glyph(keyLabel(keys.kick))} melee</span><span>${glyph(keyLabel(keys.carry))} grab</span><span>${glyph(keyLabel(keys.dodge))} shield</span><span>${glyph('Click')} special</span><span>${glyph('Esc')} pause</span>`
+      + (['brann-rook', 'ilyra-voss'].includes(room?.seats[duel.slot ?? 0]?.fighter ?? '')
+        ? `<span class="duel-note">Direction + melee selects aerials. ${keyLabel(keys.climb)} + ${keyLabel(keys.up)} / ${keyLabel(keys.down)} + ${keyLabel(keys.kick)} (or right stick up/down) selects ground heavies. Release jump and press again for a double jump.</span>` : '')
       + (!isSecureContext ? '<span class="duel-note">Pads need HTTPS in some browsers</span>' : '');
     for (const slot of [0, 1]) {
       const view = this.seats[slot],

@@ -1,0 +1,121 @@
+{
+  "fighter": "ilyra-voss",
+  "passive": {
+    "primeDamage": 6.9696,
+    "primed": "SCORCH PRIMED",
+    "scorchDamage": 9.2928,
+    "spent": true,
+    "burning": 120
+  },
+  "poses": [
+    {
+      "expected": "idle",
+      "frame": "clip:idle:0"
+    },
+    {
+      "expected": "idle_ready",
+      "frame": "clip:idle_ready:0"
+    },
+    {
+      "expected": "walk",
+      "frame": "clip:walk:0"
+    },
+    {
+      "expected": "run",
+      "frame": "clip:run:0"
+    },
+    {
+      "expected": "duck",
+      "frame": "clip:duck:0"
+    },
+    {
+      "expected": "crouch_idle",
+      "frame": "clip:crouch_idle:0"
+    },
+    {
+      "expected": "crouch_walk",
+      "frame": "clip:crouch_walk:0"
+    },
+    {
+      "expected": "brake",
+      "frame": "clip:brake:0"
+    },
+    {
+      "expected": "pickup",
+      "frame": "clip:pickup:0"
+    },
+    {
+      "expected": "taunt",
+      "frame": "clip:taunt:0"
+    },
+    {
+      "expected": "stun",
+      "frame": "clip:stun:0"
+    },
+    {
+      "expected": "burning",
+      "frame": "clip:burning:0"
+    },
+    {
+      "expected": "frozen",
+      "frame": "clip:frozen:0"
+    },
+    {
+      "expected": "hurt_crouch",
+      "frame": "clip:hurt_crouch:0"
+    },
+    {
+      "expected": "hurt_air",
+      "frame": "clip:hurt_air:0"
+    },
+    {
+      "expected": "hurt_back",
+      "frame": "clip:hurt_back:0"
+    },
+    {
+      "expected": "ko",
+      "frame": "clip:ko:0"
+    },
+    {
+      "expected": "defeat",
+      "frame": "clip:defeat:0"
+    },
+    {
+      "expected": "victory",
+      "frame": "clip:victory:0"
+    },
+    {
+      "expected": "stand_up",
+      "frame": "clip:stand_up:0"
+    },
+    {
+      "expected": "get_up",
+      "frame": "clip:get_up:0"
+    },
+    {
+      "expected": "ledge_release",
+      "frame": "clip:ledge_release:0"
+    },
+    {
+      "expected": "dash",
+      "frame": "clip:dash:0"
+    }
+  ],
+  "sockets": [
+    {
+      "facing": -1,
+      "errorX": 0,
+      "errorY": 0
+    },
+    {
+      "facing": 1,
+      "errorX": 0,
+      "errorY": 0
+    }
+  ],
+  "deadSlots": [
+    1,
+    0
+  ],
+  "errors": []
+}

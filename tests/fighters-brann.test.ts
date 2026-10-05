@@ -268,6 +268,17 @@ function rig(): Rig {
 }
 
 describe('Brann\'s kit on the fighter system', () => {
+  it('feeds Pressure and ultimate charge from Stock damage without losing health or counting it twice', () => {
+    const r = rig();
+    const charge = r.sys.view.ultimate.charge;
+    r.sys.noteStockHurt(12);
+    expect(r.ctx.player.hp).toBe(100);
+    expect(r.sys.snapshot()?.kit.pressure).toBe(30);
+    r.step();
+    expect(r.sys.view.ultimate.charge).toBeGreaterThan(charge);
+    expect(r.sys.view.meter?.value).toBeGreaterThan(29.5);
+    expect(r.sys.view.meter?.value).toBeLessThanOrEqual(30);
+  });
   it('feeds Pressure from health actually lost, and shows it through meter()', () => {
     const r = rig();
     expect(r.sys.view.meter).toEqual({ label: 'Pressure', value: 0, max: 100 });

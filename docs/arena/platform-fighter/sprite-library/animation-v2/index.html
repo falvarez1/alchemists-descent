@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Individual animation exports</title>
+<style>
+*{box-sizing:border-box}body{font:16px/1.5 system-ui;background:#172536;color:#e9e0cf;margin:0;padding:24px;max-width:1100px;margin:auto}
+a{color:#80ddd3}h1{font-size:26px}label{display:inline-block;margin:0 18px 12px 0}select,button,input{font:inherit;padding:7px}button{cursor:pointer}
+canvas{max-width:100%;height:auto;image-rendering:pixelated;background:#253b4c;border:1px solid #607383}.frames{overflow:auto}#strip{max-width:none}
+.small{font-size:14px;color:#bdcad3}select{max-width:100%}button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #eac279;outline-offset:3px}
+</style>
+<h1>Individual animation exports</h1>
+<p>One animation per source image. Transparent PNG frames, atlases, and tick-based maps are in <a href="manifest.json">the export manifest</a>.</p>
+<p class="small" id="inventory">Animation candidates under review. The roster and motion review are still in progress.</p>
+<label>Animation <select id="clip"></select></label>
+<label><input id="mirror" type="checkbox"> Face left</label>
+<label>Speed <select id="speed"><option value=".25">Quarter</option><option value=".5">Half</option><option value="1" selected>Normal</option></select></label>
+<div><canvas id="stage" width="768" height="512"></canvas></div>
+<p><button id="play">Pause</button> <button id="restart">Restart</button> <button id="next">Next frame</button></p>
+<p id="status"></p><p><a id="atlas">PNG atlas</a> · <a id="data">Animation JSON</a> · <a href="README.md">Integration notes</a> · <a href="../index.html">Earlier pose library</a></p>
+<div class="frames"><canvas id="strip"></canvas></div>
+<script src="manifest.js"></script>
+<script>
+'use strict';
+const lib=window.ANIMATION_LIBRARY,$=id=>document.getElementById(id);
+let clip=lib.clips[0],image=new Image(),age=0,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,last=0,token=0,loading=true;
+for(const c of lib.clips){const o=document.createElement('option');o.value=c.id;o.textContent=c.id.replaceAll('/',' · ').replaceAll('_',' ')+' · '+c.frames.length+' frames';$('clip').append(o);}
+$('inventory').textContent=lib.clips.length+' clips · '+lib.clips.reduce((n,c)=>n+c.frames.length,0)+' exported frames. Animation review and remaining roster work are in progress.';
+function frameAt(age){if(!clip.loop&&clip.endBehavior==='hide'&&age>=clip.totalTicks)return -1;let t=clip.loop?age%clip.totalTicks:Math.min(age,clip.totalTicks);for(let i=0;i<clip.frames.length;i++){if(t<clip.frames[i].durationTicks)return i;t-=clip.frames[i].durationTicks;}return clip.frames.length-1;}
+function paint(g,i,x,y,scale){const f=clip.frames[i],r=f.rect;g.save();g.translate(x,y);g.scale($('mirror').checked?-scale:scale,scale);g.imageSmoothingEnabled=false;g.drawImage(image,r.x,r.y,r.w,r.h,-f.pivot.x,-f.pivot.y,r.w,r.h);g.restore();}
+function draw(){
+  if(loading||!image.complete||!image.naturalWidth)return;
+  const i=frameAt(age),g=$('stage').getContext('2d'),grip=clip.anchorType==='grip';
+  const rootY=grip?100:clip.kind==='fighter'||clip.registration==='ground'?450:256;
+  g.clearRect(0,0,768,512);
+  if(grip){
+    const left=$('mirror').checked;
+    g.fillStyle='#607383';g.fillRect(left?204:384,104,180,12);
+    g.fillStyle='#bdcad3';g.fillRect(left?204:384,104,180,2);
+  }else if(rootY===450){
+    g.strokeStyle='#587080';g.beginPath();g.moveTo(0,450);g.lineTo(768,450);g.stroke();
+  }
+  if(i>=0)paint(g,i,384,rootY,2);
+  if(grip){g.fillStyle='#80ddd3';g.fillRect(383,99,2,2);}
+  const size=clip.frameSize,s=$('strip').getContext('2d');
+  s.clearRect(0,0,$('strip').width,$('strip').height);
+  clip.frames.forEach((f,j)=>{paint(s,j,j*size+clip.pivot.x,clip.pivot.y,1);s.fillStyle='#eee0c7';s.fillText(String(j+1),j*size+8,size+12);if(j===i){s.strokeStyle='#80ddd3';s.strokeRect(j*size+1,1,size-2,size-2);}});
+  $('status').textContent=(i<0?'Complete (hidden)':'Frame '+(i+1)+' / '+clip.frames.length)+' · '+clip.totalTicks+' ticks · '+(clip.loop?'Loop':clip.endBehavior==='hide'?'One-shot, hides on completion':'One-shot, holds final frame')+(grip?' · Hand anchor':'');
+}
+async function choose(){const key=++token,nextClip=lib.clips.find(c=>c.id===$('clip').value);loading=true;$('status').textContent='Loading animation…';const next=new Image();next.src=nextClip.image;await next.decode();if(key!==token)return;clip=nextClip;age=0;image=next;loading=false;$('strip').width=clip.frames.length*clip.frameSize;$('strip').height=clip.frameSize+20;$('atlas').href=clip.image;$('data').href=clip.data;document.body.dataset.readyClip=clip.id;draw();}
+function controls(){$('play').textContent=paused?'Play':'Pause';}
+$('clip').onchange=choose;$('mirror').onchange=draw;$('play').onclick=()=>{paused=!paused;controls();};$('restart').onclick=()=>{age=0;draw();};$('next').onclick=()=>{paused=true;controls();const n=(frameAt(age)+1)%clip.frames.length;age=clip.frames.slice(0,n).reduce((v,f)=>v+f.durationTicks,0);draw();};
+function tick(now){if(last&&!paused&&!loading){age+=Math.min(now-last,100)*.06*Number($('speed').value);if(!clip.loop)age=Math.min(age,clip.totalTicks);draw();}last=now;requestAnimationFrame(tick);}
+controls();choose();requestAnimationFrame(tick);
+</script>
+</html>

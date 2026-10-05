@@ -3,6 +3,7 @@ import type { LightField, PixelSurface } from '@/render/pixels';
 import { BRASS, BRASS_D, BRASS_L, INK, IRON, IRON_D, Pen, cameraView } from '@/render/sprites/FineArt';
 import type { RGB } from '@/render/sprites/FineArt';
 import { TUNING, plateDir } from '@/fighters/kits/brann-rook-logic';
+import { drawDuelEffect } from '@/render/duel/DuelFighterSprites';
 
 /**
  * Brann's plate and the heat of her vessel, drawn (presentation only: the plate's geometry that blocks
@@ -60,6 +61,8 @@ export function drawPlate(out: PixelSurface, field: LightField, ctx: Ctx, v: Pla
   const span = g.halfArc * (0.3 + 0.7 * e);
   const r1 = Math.max(5, g.reach * (0.6 + 0.4 * e) - v.recoil);
   const r0 = r1 - THICK;
+  if (drawDuelEffect(out, ctx, 'guard_plate', Math.min(15, v.raise * 15),
+    cx + dir.x * r1, cy + dir.y * r1, dir.x < 0, v.warn ? .8 : 1, Math.atan2(dir.y, dir.x < 0 ? -dir.x : dir.x))) return;
   const sample = field.sample(cx + dir.x * g.reach, cy + dir.y * g.reach);
   // Held in her lantern's light, but never lost in the dark: the plate is the one thing she is behind
   // (and never brighter than the sprite itself: a bright lantern close by would push the brass and the dial into the bloom)
@@ -157,6 +160,7 @@ export function drawRedlineAura(out: PixelSurface, _field: LightField, ctx: Ctx,
   const frame = ctx.state.frameCount;
   const calm = ctx.state.reduceFlashes === true;
   const cx = player.x, cy = player.y - (player.crawling ? 5 : 9);
+  if (drawDuelEffect(out, ctx, 'redline_aura', calm ? 18 : 12 + frame % 12, cx, cy, false, strength * .65)) return;
   const rx = 7, ry = player.crawling ? 6 : 11.5;
   const pulse = calm ? 0.8 : 0.72 + 0.28 * Math.sin(frame * 0.22);
   // A soft red wash over everything within 22 cells, added on top of the finished frame: it tints the lit stone and the

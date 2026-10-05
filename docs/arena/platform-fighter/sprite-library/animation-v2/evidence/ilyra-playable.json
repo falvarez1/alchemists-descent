@@ -1,0 +1,142 @@
+{
+  "attacks": [
+    {
+      "expected": "neutral_air",
+      "kind": "neutral_air",
+      "damage": 6.9696,
+      "knock": {
+        "x": 5.426670090555298,
+        "y": -3.617780060370199
+      }
+    },
+    {
+      "expected": "back_air",
+      "kind": "back_air",
+      "damage": 10.8416,
+      "knock": {
+        "x": -9.434210881759125,
+        "y": -2.358552720439781
+      }
+    },
+    {
+      "expected": "up_air",
+      "kind": "up_air",
+      "damage": 8.5184,
+      "knock": {
+        "x": 0.9161227252144789,
+        "y": -8.70316588953755
+      }
+    },
+    {
+      "expected": "down_air",
+      "kind": "down_air",
+      "damage": 10.4544,
+      "knock": {
+        "x": 0.6316595253866764,
+        "y": 10.527658756444607
+      }
+    },
+    {
+      "expected": "up_smash",
+      "kind": "up_smash",
+      "damage": 15.1008,
+      "knock": {
+        "x": 1.1280020351825168,
+        "y": -12.408022387007685
+      }
+    },
+    {
+      "expected": "down_smash",
+      "kind": "down_smash",
+      "damage": 13.552,
+      "knock": {
+        "x": 11.055900076476702,
+        "y": -2.072981264339382
+      }
+    }
+  ],
+  "jump": {
+    "first": {
+      "y": 628,
+      "vy": -0.47206059003903156
+    },
+    "second": {
+      "y": 624,
+      "vy": -4.669,
+      "pose": "double_jump",
+      "t": 12
+    },
+    "third": {
+      "vy": -0.5448239999999998,
+      "t": 8
+    }
+  },
+  "keyboard": [
+    {
+      "expected": "up_smash",
+      "kind": "up_smash"
+    },
+    {
+      "expected": "down_smash",
+      "kind": "down_smash"
+    }
+  ],
+  "effects": {
+    "guard": 1,
+    "lowering": 1,
+    "expired": 0,
+    "ultimate": 1,
+    "reset": 0,
+    "effectPixels": [
+      {
+        "name": "crucible_spin",
+        "pixels": 10,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "crucible_burst",
+        "pixels": 148,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "phoenix_aura",
+        "pixels": 75,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "fire_trail",
+        "pixels": 60,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "scorch",
+        "pixels": 21,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "volatile_spark",
+        "pixels": 7,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "phoenix_charge",
+        "pixels": 67,
+        "visible": true,
+        "latePixels": 0
+      },
+      {
+        "name": "crucible_fragments",
+        "pixels": 23,
+        "visible": true,
+        "latePixels": 0
+      }
+    ]
+  },
+  "errors": []
+}

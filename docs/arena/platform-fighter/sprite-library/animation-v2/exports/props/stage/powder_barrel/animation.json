@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "props/stage/powder_barrel",
+  "kind": "prop",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/props/stage/powder_barrel.png",
+  "extractionMethod": "fixed-asset-grid",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One squat dark oak powder barrel with two black iron bands, brass rivets, short unlit fuse and warm ivory hazard skull painted on front. Closed intact state, side view, no explosion or smoke.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 1,
+    "rows": 1
+  },
+  "simulationHz": 60,
+  "scale": 0.25,
+  "pivot": {
+    "x": 192,
+    "y": 320
+  },
+  "anchorType": "ground",
+  "registration": "ground",
+  "loop": false,
+  "endBehavior": "hold",
+  "totalTicks": 1,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 1,
+      "durationMs": 16.666666666666668,
+      "pivot": {
+        "x": 192,
+        "y": 320
+      },
+      "sourceRoot": {
+        "x": 687,
+        "y": 920
+      },
+      "sourceRect": {
+        "x": 0,
+        "y": 0,
+        "w": 1374,
+        "h": 1145
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 127.5,
+        "y": 146.25,
+        "w": 128.75,
+        "h": 173.75
+      },
+      "sha256": "6096885e62bdf421e592946575040fa76faede916a89414b2244f8414d7ceeb5"
+    }
+  ]
+}

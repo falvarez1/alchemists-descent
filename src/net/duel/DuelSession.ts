@@ -4,7 +4,18 @@ import type { CellPatch } from '@/authoring/cellPatch';
 import type { SessionTransport, SessionTransportFactory } from '@/net/SessionTransport';
 import { DUEL_PROTOCOL, parseServerMessage, type DuelRoomState, type DuelCommand } from './protocol';
 import { DuelInputBuffer, type DuelInput, type DuelTickInput } from './input';
-import { decodeDuelSnapshot, encodeDuelSnapshot, type ArenaPresentation, type DuelSnapshot } from './snapshot';
+import {
+  decodeDuelSnapshot,
+  encodeDuelSnapshot,
+  DUEL_SNAPSHOT_TICKS,
+  type ArenaPresentation,
+  type DuelSnapshot,
+} from './snapshot';
+
+/** Sent input times kept for the round-trip measurement (more than a second of inputs). */
+const INPUT_HISTORY = 256;
+/** A host send queue deeper than this skips a capture rather than queue latency (about six snapshots). */
+const MAX_QUEUED_BYTES = 96_000;
 
 /** Adapter boundary for the game. Moving authority to a server does not change
  * the room protocol, controls, or replica format. No game/DOM imports here. */
@@ -16,13 +27,16 @@ export interface DuelRuntime {
   clearInput(): void;
   pollControls?(): void;
   input(slot: number, input: DuelTickInput): void;
-  capture(meta: Pick<DuelSnapshot, 'epoch' | 'seq' | 'base' | 'baseline'>): {
+  capture(meta: Pick<DuelSnapshot, 'epoch' | 'seq' | 'base' | 'baseline' | 'ack'>): {
     snapshot: DuelSnapshot;
     cells: CellPatch;
   };
+  /** Buffer a validated, in-order snapshot for playback; false when it cannot belong to this match. */
   receive(snapshot: DuelSnapshot, cells: CellPatch, now: number): boolean;
-  /** True when new state or interpolation requires composing the replica. */
+  /** Advance playback; true when new state or interpolation requires composing the replica. */
   present(now: number): boolean;
+  /** The match state the replica is showing (null before its first frame). */
+  presentation(): ArenaPresentation | null;
 }
 
 /** Room lifecycle above an injected transport. SpacetimeDB-specific reducers,
@@ -33,9 +47,10 @@ export class DuelSession implements DuelApi {
   slot: 0 | 1 | null = null;
   status = '';
   latency = 0;
+  /** Guest: milliseconds from sending an input to receiving the snapshot that includes it (smoothed). */
+  inputDelay = 0;
   connected = false;
   snapshotCount = 0;
-  presentation: ArenaPresentation | null = null;
   private transport: SessionTransport | null = null;
   private token: string | undefined;
   private role: 'host' | 'guest' = 'host';
@@ -52,7 +67,10 @@ export class DuelSession implements DuelApi {
   private lastInput = 0;
   private lastPing = 0;
   private lastHeard = 0;
-  private nextSnapshot = 0;
+  private ticksSincePublish = 0;
+  /** Host: the newest guest input applied so far. Guest: the newest acknowledgement received. */
+  private ack = 0;
+  private readonly inputSentAt = new Float64Array(INPUT_HISTORY);
   private sentSeq = 0;
   private receivedSeq = 0;
   private needsBaseline = true;
@@ -66,6 +84,9 @@ export class DuelSession implements DuelApi {
   ) {}
   get replica(): boolean {
     return this.active && this.slot === 1;
+  }
+  get presentation(): ArenaPresentation | null {
+    return this.replica && this.preparedEpoch > 0 ? this.runtime.presentation() : null;
   }
   get playing(): boolean {
     return this.connected && this.room?.phase === 'playing' && this.preparedEpoch === this.room.epoch;
@@ -169,11 +190,16 @@ export class DuelSession implements DuelApi {
           this.needsBaseline = true;
           return;
         }
-        if (!this.runtime.receive(snapshot, cells, this.now())) {
+        const now = this.now();
+        if (!this.runtime.receive(snapshot, cells, now)) {
           this.fail('The match world does not match this game build.');
           return;
         }
-        this.presentation = snapshot.arena;
+        if (snapshot.ack > this.ack && this.inputSeq - snapshot.ack < INPUT_HISTORY) {
+          const sample = now - this.inputSentAt[snapshot.ack % INPUT_HISTORY];
+          this.inputDelay = this.inputDelay > 0 ? this.inputDelay * 0.9 + sample * 0.1 : sample;
+        }
+        this.ack = Math.max(this.ack, snapshot.ack);
         this.receivedSeq = snapshot.seq;
         this.needsBaseline = false;
         this.lastHeard = this.now();
@@ -206,7 +232,6 @@ export class DuelSession implements DuelApi {
     if (room.phase === 'lobby' && (this.preparedEpoch > 0 || this.preparingEpoch > 0)) {
       this.preparation++;
       this.preparedEpoch = this.preparingEpoch = 0;
-      this.presentation = null;
       this.runtime.stop();
     }
     if (room.phase === 'loading' && room.epoch !== this.preparedEpoch && room.epoch !== this.preparingEpoch)
@@ -221,8 +246,8 @@ export class DuelSession implements DuelApi {
       preparation = ++this.preparation;
     this.preparingEpoch = room.epoch;
     this.preparedEpoch = 0;
-    this.presentation = null;
-    this.receivedSeq = this.sentSeq = 0;
+    this.receivedSeq = this.sentSeq = this.ack = this.ticksSincePublish = 0;
+    this.inputDelay = 0;
     this.needsBaseline = true;
     this.release();
     const valid = (): boolean =>
@@ -283,8 +308,8 @@ export class DuelSession implements DuelApi {
     this.room = null;
     this.slot = null;
     this.token = undefined;
-    this.presentation = null;
-    this.preparedEpoch = this.preparingEpoch = this.sentSeq = this.receivedSeq = this.retry = 0;
+    this.preparedEpoch = this.preparingEpoch = this.sentSeq = this.receivedSeq = this.retry = this.ack = 0;
+    this.inputDelay = 0;
     this.nextConnect = Infinity;
     this.status = '';
     this.release();
@@ -322,7 +347,10 @@ export class DuelSession implements DuelApi {
     this.lastInput = now;
     const input = { ...this.runtime.sample(), seq: ++this.inputSeq };
     if (this.slot === 0) this.inputs[0].accept(input, now);
-    else this.send({ type: 'input', epoch: this.preparedEpoch, ...input });
+    else {
+      this.inputSentAt[input.seq % INPUT_HISTORY] = now;
+      this.send({ type: 'input', epoch: this.preparedEpoch, ...input });
+    }
   }
   frame(now: number): boolean {
     if (!this.active) return false;
@@ -352,24 +380,28 @@ export class DuelSession implements DuelApi {
   }
   beforeTick(): void {
     if (!this.playing || this.slot !== 0) return;
-    for (const slot of [0, 1]) this.runtime.input(slot, this.inputs[slot].take(this.now()));
+    const now = this.now();
+    for (const slot of [0, 1]) {
+      const input = this.inputs[slot].take(now);
+      if (slot === 1) this.ack = Math.max(this.ack, input.seq);
+      this.runtime.input(slot, input);
+    }
   }
   afterTick(): void {
+    this.ticksSincePublish++;
     this.publish(false);
   }
   private publish(force: boolean): void {
-    const now = this.now();
     if (
       (!this.playing && !(force && this.connected && this.room?.phase === 'paused')) ||
       !this.room?.seats.every((s) => s.connected) ||
       this.preparedEpoch === 0 ||
       this.slot !== 0 ||
-      (!force && now < this.nextSnapshot) ||
+      (!force && this.ticksSincePublish < DUEL_SNAPSHOT_TICKS) ||
       !this.transport?.sendBinary ||
-      (this.transport.bufferedBytes ?? 0) > 256_000
+      (this.transport.bufferedBytes ?? 0) > MAX_QUEUED_BYTES
     )
       return;
-    this.nextSnapshot = now + 1000 / 30;
     // Ordered reliable delivery needs a baseline only for initialization or recovery.
     const baseline = this.needsBaseline;
     try {
@@ -378,12 +410,14 @@ export class DuelSession implements DuelApi {
         seq: this.sentSeq + 1,
         base: this.sentSeq,
         baseline,
+        ack: this.ack,
       });
       if (!this.transport.sendBinary(encodeDuelSnapshot(packet.snapshot, packet.cells))) {
         this.needsBaseline = true;
         return;
       }
       this.sentSeq++;
+      this.ticksSincePublish = 0;
       this.snapshotCount++;
       this.needsBaseline = false;
     } catch (error) {

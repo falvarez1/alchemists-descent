@@ -8,6 +8,7 @@ import { TUNING, PressureVessel, blowOrigin, blowFromFront, plateDir, segmentSec
 import type { NearFoe } from '@/fighters/kits/brann-rook-logic';
 import { drawPlate, drawRedlineAura, newPlateView } from '@/fighters/kits/brann-rook-plate';
 import { Cell } from '@/sim/CellType';
+import { drawDuelEffect } from '@/render/duel/DuelFighterSprites';
 
 export { TUNING } from '@/fighters/kits/brann-rook-logic';
 
@@ -43,6 +44,18 @@ export const kit: FighterKitDef = {
     let dropAura: (() => void) | null = null;
     let auraK = 0;
     let redlineLight: AuthoredLight | null = null;
+    const spriteEffects: Array<{ age: number; drop: () => void }> = [];
+    const clearSpriteEffects = (): void => { for (const effect of spriteEffects) effect.drop(); spriteEffects.length = 0; };
+    const spriteEffect = (name: string, x: number, y: number): void => {
+      if (!ctx.arena?.stockMatch) return;
+      if (spriteEffects.length >= 4) spriteEffects.shift()!.drop();
+      const effect = { age: 0, drop: () => {} };
+      const mirror = ctx.player.facing < 0;
+      effect.drop = sys.addDrawable({ layer: 'over', draw: (out, _field, c) => {
+        drawDuelEffect(out, c, name, effect.age, x, y, mirror, .8);
+      } });
+      spriteEffects.push(effect);
+    };
     const unsub = ctx.events.on('playerRespawned', () => { vessel.reset(); });
 
     // ------------------------------------------------------------------ the world's cells and the senses
@@ -82,6 +95,9 @@ export const kit: FighterKitDef = {
 
     const vent = (): void => {
       const p = ctx.player, c = chest();
+      spriteEffect('pressure', c.x, c.y);
+      spriteEffect('boiler_vent', c.x, c.y);
+      spriteEffect('vent_cloud', c.x, c.y - 4);
       const t = TUNING.pressure;
       clouds(c.x, c.y, t.ventRadius, t.ventPuffs, t.puffRadius, t.puffKeep, t.ventLife);
       sys.setMod('pressure-vent', t.resistTicks, { staggerResist: true });
@@ -121,6 +137,7 @@ export const kit: FighterKitDef = {
       const r = TUNING.guard.reach;
       const x = g.cx + Math.cos(angle) * r, y = g.cy + Math.sin(angle) * r;
       view.flash = 1;
+      spriteEffect('guard_impact', x, y);
       view.flashAngle = angle;
       view.recoil = 2.5;
       sparks(x, y, 30, 2.6, angle, 1.0, SPARK_GOLD);
@@ -143,6 +160,7 @@ export const kit: FighterKitDef = {
       // The plate folds away with a hiss of steam at its edge.
       const g = guardGeom(), r = TUNING.guard.reach;
       const x = g.cx + g.dir.x * (r - 2), y = g.cy + g.dir.y * (r - 2);
+      spriteEffect('steam_jet', x, y);
       puff(x, y, 3.5, 0.5, 20);
       ctx.audio.sfx('mech.latch', x, y, { gain: 0.9, pitch: -3 });
       ctx.audio.sfx('mat.steam', x, y, { gain: 0.5, pitch: 2 });
@@ -167,6 +185,9 @@ export const kit: FighterKitDef = {
 
     return {
       tick(): void {
+        for (let i = spriteEffects.length - 1; i >= 0; i--) {
+          if (++spriteEffects[i].age >= 36) { spriteEffects[i].drop(); spriteEffects.splice(i, 1); }
+        }
         vessel.tick();
         const c = chest();
         // Venting: a steady plume off the shoulders while the held footing lasts.
@@ -241,6 +262,7 @@ export const kit: FighterKitDef = {
 
       // ---------------------------------------------------------------- Pressure Vessel
       onPlayerHurt(lost: number): void {
+        if (lost >= 12) spriteEffect('armor_scraps', ctx.player.x, ctx.player.y - 9);
         if (vessel.add(lost)) vent();
       },
 
@@ -253,6 +275,8 @@ export const kit: FighterKitDef = {
       ultimate(): boolean {
         const r = TUNING.redline;
         const p = ctx.player, c = chest();
+        spriteEffect('boiler_flare', c.x, c.y);
+        spriteEffect('redline_heat', c.x, c.y - 4);
         sys.setMod('redline', r.duration, { damageTaken: r.damageTaken, staggerResist: true });
         // The ignition: a great gout of steam, a blow of heat, a red flare that stays with her.
         clouds(c.x, c.y, r.ventRadius + 1, 4, r.puffRadius + 0.5, 0.5, r.ventLife + 4);
@@ -302,6 +326,7 @@ export const kit: FighterKitDef = {
 
       // ---------------------------------------------------------------- lifecycle and save
       reset(): void {
+        clearSpriteEffects();
         lower('reset');
         if (dropAura) { dropAura(); dropAura = null; }
         auraK = 0;
@@ -312,6 +337,7 @@ export const kit: FighterKitDef = {
         view.recoil = 0;
       },
       dispose(): void {
+        clearSpriteEffects();
         unsub();
         if (dropPlate) { dropPlate(); dropPlate = null; }
         if (dropAura) { dropAura(); dropAura = null; }

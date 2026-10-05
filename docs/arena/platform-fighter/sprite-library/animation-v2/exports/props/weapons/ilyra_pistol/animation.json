@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "props/weapons/ilyra_pistol",
+  "kind": "prop",
+  "image": "atlas.png",
+  "status": "animation-validation-candidate",
+  "source": "sources/props/weapons/ilyra_pistol.png",
+  "extractionMethod": "fixed-asset-grid",
+  "extractionReview": null,
+  "detachedComponents": [],
+  "description": "One compact brass pistol-wand with dark grip, short elegantly flared brass barrel, small amber chamber and tiny ivory etched details. Side view pointing right, grip pointing down-left. No hand or fighter.",
+  "review": {
+    "status": "generated-motion-review-required"
+  },
+  "frameSize": 384,
+  "grid": {
+    "columns": 1,
+    "rows": 1
+  },
+  "simulationHz": 60,
+  "scale": 0.25,
+  "pivot": {
+    "x": 192,
+    "y": 192
+  },
+  "anchorType": "center",
+  "registration": "center",
+  "loop": false,
+  "endBehavior": "hold",
+  "totalTicks": 1,
+  "facing": {
+    "authored": "right",
+    "left": "mirror-around-root"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "image": "000.png",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 384,
+        "h": 384
+      },
+      "phase": null,
+      "durationTicks": 1,
+      "durationMs": 16.666666666666668,
+      "pivot": {
+        "x": 192,
+        "y": 192
+      },
+      "sourceRoot": {
+        "x": 768,
+        "y": 512
+      },
+      "sourceRect": {
+        "x": 0,
+        "y": 0,
+        "w": 1536,
+        "h": 1024
+      },
+      "sourceBoundaryPixels": 0,
+      "content": {
+        "x": 92.5,
+        "y": 133.25,
+        "w": 210,
+        "h": 122.5
+      },
+      "sha256": "8ae31a59b795299c538324ffa1ef34d4a2b3f101e139bc6abc9db71377bb2109"
+    }
+  ]
+}

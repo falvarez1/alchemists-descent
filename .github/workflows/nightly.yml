@@ -1,9 +1,9 @@
 name: Nightly
 
-# The full suite (docs/split/SPLIT-PLAN.md D15): every findability seed with the encounter lairs, then the 15 split
-# gate probes, one at a time, on a GPU-less runner. Too slow for every PR (the findability suite alone takes 16-19 min
-# on a desktop). A failure opens an issue labelled `nightly-red`, or comments on the open one, so a red night is seen
-# the next morning instead of sitting unnoticed.
+# The full suite (docs/split/SPLIT-PLAN.md D15): every findability seed with the encounter lairs, then the 8 Descent
+# gate probes (CLASHFORGED runs its 7 in its own repository), one at a time, on a GPU-less runner. Too slow for
+# every PR (the findability suite alone takes 16-19 min on a desktop). A failure opens an issue labelled
+# `nightly-red`, or comments on the open one, so a red night is seen the next morning instead of sitting unnoticed.
 on:
   schedule:
     - cron: '0 7 * * *' # 07:00 UTC, the small hours in the Americas
@@ -53,7 +53,7 @@ jobs:
           curl -fsS http://127.0.0.1:5173/ >/dev/null
           # The gate list includes the full findability suite (verify:findability: every seed, every floor, then the
           # encounter lairs). It runs every probe even after a failure and exits non-zero if any was red.
-          node scripts/split/gate-probes.mjs all http://127.0.0.1:5173/
+          node scripts/split/gate-probes.mjs descent http://127.0.0.1:5173/
 
       - name: Keep the probe logs
         if: always()

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "ilyra-voss/unarmed/walk",
+    "source": "sources/ilyra-voss/unarmed/walk-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/unarmed/walk.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. The walking gait currently skips the passing poses. Replace the twelve drawings with ONE continuous, physically correct walking cycle. Frame 1 near leg forward heel contact; 2 front knee bends carrying weight; 3 near leg under hip supporting body with far foot LIFTED next to near ankle; 4 far knee passes ahead; 5 far leg extends forward; 6 far heel makes contact. Frames 7-12 are the corresponding six poses with near and far legs exchanged. The legs must CROSS UNDER THE HIPS in frames 3 and 9; those are narrow silhouettes with one supporting leg, not wide straddles. Arms counter-swing. No standing still start or ending.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/armed/walk",
+    "source": "sources/ilyra-voss/armed/walk-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/armed/walk.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Remove the unwanted second pistol. Exactly ONE brass pistol-wand is held by the near hand throughout; the far hand is empty. Keep the same outfit. Replace the stride with ONE 12-frame walking cycle: near heel forward contact, knee compression, near leg UNDER hip carrying weight while far foot lifts beside ankle, far knee passes ahead, far leg extends forward, far heel contacts; then the opposite six phases with near and far legs exchanged. Frames 3 and 9 must have legs close together underneath hips. NO standing-still initial or final poses.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/armed/run",
+    "source": "sources/ilyra-voss/armed/run-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/armed/run.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Replace the incomplete running sequence with ONE continuously looping SIXTEEN-frame run. ALL frames are RUNNING; no startup, braking or standing pose. The first EIGHT frames progress through near-foot contact, near-knee compression, opposite-knee passing, takeoff, flight, opposite-foot touchdown. The final EIGHT continue through the opposite half stride with near/far legs exchanged, returning continuously to the first contact. Keep exactly ONE pistol-wand held close in the near hand; far hand is empty. Match the reference appearance but do not keep incorrect leg positions. Include actual small intermediate leg-angle changes.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/unarmed/tumble",
+    "source": "sources/ilyra-voss/unarmed/tumble-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/unarmed/tumble.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Replace this jump-and-landing action with ONE seamless tumbling loop. Start already AIRBORNE in a tight tucked ball; knees held close and both arms tucked, hat secured on head. All sixteen cells show THE SAME TUCKED BODY rotating clockwise in the picture plane, angles 0,22.5,45,67.5,90,112.5,135,157.5,180,202.5,225,247.5,270,292.5,315,337.5 degrees. Body faces right at 0 degrees, DOWN at 90, LEFT when upside-down at 180, UP at 270. Keep SIDE-VIEW camera. No jump anticipation, landing, standing, forward-running or uncurling poses. Same compact silhouette and same scale, center fixed in every cell.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/armed/tumble",
+    "source": "sources/ilyra-voss/armed/tumble-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/armed/tumble.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Replace this jump-and-landing action with ONE seamless tumbling loop. Start already AIRBORNE in a tight tucked ball with knees held close, pistol held safely close against chest, hat secured. Exactly ONE brass pistol remains held throughout; far hand empty. SIXTEEN cells: same TUCKED BODY rotates clockwise in picture plane at 0,22.5,45,67.5,90,112.5,135,157.5,180,202.5,225,247.5,270,292.5,315,337.5 degrees. Face points right at 0, DOWN at 90, LEFT when upside-down at 180, UP at 270. Fixed side-view camera. No anticipation, landing, standing, running or uncurling poses. Compact silhouette and center fixed in every cell.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/armed/ultimate",
+    "source": "sources/ilyra-voss/armed/ultimate-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/armed/ultimate.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Correct equipment continuity only. Keep all SIXTEEN chronological drink-and-empower poses, same outfit and proportions. Exactly ONE brass pistol-wand is in the near hand throughout the sequence. Remove the second pistol from the far hand in frames where it appears. The far/free hand is empty before reaching for the amber flask, holds ONLY the amber flask while drinking, then is EMPTY after putting it away. Never hold two guns. Preserve the 4x4 layout and all other art.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  },
+  {
+    "id": "ilyra-voss/unarmed/tactical",
+    "source": "sources/ilyra-voss/unarmed/tactical-v2.png",
+    "reference": "Y:/Projects/alchemists-descent-worktrees/arena-stock-matches/docs/arena/platform-fighter/sprite-library/animation-v2/sources/ilyra-voss/unarmed/tactical.png",
+    "prompt": "Use case: identity-preserve. Edit this ONE animation sheet of Ilyra Voss to fix the following animation issue. Correct vial continuity only. Keep all SIXTEEN chronological throw poses in the existing 4x4 layout. Frames 1-2 hands empty as she reaches belt; frames 3 through 10 she holds exactly ONE small amber vial in the THROWING hand at all times, including frame 8 (row 2, column 4) where it currently disappears. At frame 11 she releases: frames 11-16 that hand is EMPTY. No floating thrown vial; projectile is separate. No weapons. Preserve all other pose, face, hat, braid and costume details.\nPreserve detailed clean pixel-art style, cream hat with dark band, silver braid, teal coat with gold edge, ivory shirt, dark trousers and leather boots. Same body size, head size and camera distance in every cell. Preserve original frame count and grid layout. Keep every figure well within its equal cell, with generous empty transparent margins. Actual transparent background. No labels, numbers, grid, scenery, cast shadows or effects. One continuous animation only.",
+    "status": "planned"
+  }
+]

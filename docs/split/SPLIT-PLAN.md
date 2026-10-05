@@ -1,9 +1,10 @@
 # Splitting into two games, in two repositories
 
-Status: **plan, revised 2026-10-04: two repositories, copy first; decisions D9-D16 taken the same day.** Phase 0 on
-`feature/split-phase-0`: main's red-CI causes are fixed, and locally the oracles are identical and all 15 gate probes
-green. Left: D14 (colours from cells) and D15's branch protection. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8 says what that
-plan was and why it was dropped.
+Status (in Descent's repository): **Phases 0 and 1 are done.** CLASHFORGED was copied to `falvarez1/clashforged`
+(private) at `84a54fc` on 2026-10-04, after PRs #21, #22 and #23 merged, and its 7 gate probes pass there. Descent's
+title no longer offers the Duel or the Arena. **The owner's focus is CLASHFORGED**; Descent's own work (Phase 2, D13,
+D14) waits here. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
+says what that plan was and why it was dropped.
 
 The Duel has grown into its own game. The repository is copied in two, and each copy deletes the other game:
 
@@ -32,7 +33,7 @@ ports it.
 | D11 | Training's targets | **The fighters themselves, as scripted dummies** (stand, shield, jump, DI, recover, attack on a loop) | Training then teaches the actual game: real hurtboxes, knockback, percent and ledge play. No creature framework survives in CLASHFORGED for it. D-025. |
 | D12 | CLASHFORGED's AuthorLink relay | **Its own small relay Worker**, deployed apart from the game's Worker | Dev tooling stays out of the player-facing deployment: no dev endpoints or write tokens near the game, its own deploy cadence, and a relay bug cannot take the game down. D-026. |
 | D13 | Descent's settling hard-locks | **Fixed at generation.** Route-critical powder can no longer pour: it is fused or settled where it borders carved air. This needs a GEN bump and a 16-seed sweep. The late runtime checks stay as a safety net that logs when it fires. | Levels become correct by construction, and no repair ever digs on screen. |
-| D14 | The 9 MB world pull | **A cell's colour is a pure function of the final grid and the seed**, computed the same way by the generator and the receiver. Done in Phase 0, before the copy. | A world is then fully described by its cells: pulls and Builder documents return to about 75 KB and can never drift. |
+| D14 | The 9 MB world pull | **A cell's colour is a pure function of the final grid and the seed**, computed the same way by the generator and the receiver. **On Descent's own track** (moved off the copy's path, the owner's call): CLASHFORGED deletes the cave generator, and its stages, mostly empty and coloured by stage art, already travel small. | A world is then fully described by its cells: pulls and Builder documents return to about 75 KB and can never drift. |
 | D15 | What GitHub CI runs | **Fast checks on every PR, the full suite nightly, both required by branch protection.** Local checks are the gate; CI is a backstop nobody waits on. | PRs stay quick, a seed-specific regression is caught within a day, and main can no longer stay red unnoticed. |
 | D16 | When the Balance Lab starts | **By dependency.** The parts that need no game loop start the day of the copy; the batch runner waits for Phase 3's headless root (D10). | Every part is built once, on the foundation it needs. D-021 as revised. |
 
@@ -137,9 +138,6 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
   - Behind them was a real game bug: seed 5's levels kept settling after the 12 s repair checks stopped, and two of
     them hard-locked. Late checks now run up to 3 minutes (`docs/PROBE-HEALTH.md`). D13 fixes the cause at
     generation, on Descent's own track.
-- **Colours from cells (D14).** The generator and the receiver colour a cell by the same pure function of the final
-  grid and the seed, so a world travels and saves as its cells (about 75 KB, not 9 MB). It needs a GEN bump and a look
-  review of the rock shading.
 - **CI restructured (D15)**:
   - pull requests run the fast checks and a one-seed findability smoke;
   - a nightly job runs every seed and all gate probes, and opens an issue when it fails;
@@ -150,18 +148,22 @@ Whatever is on `main` at the copy lands in both repositories, so its fixes and c
   green in one local run of `gate-probes.mjs all`. That run writes the Duel probes' evidence to
   `verify-out/split/gates/evidence` (`PROBE_EVIDENCE_DIR`), so it changes no tracked file.
 - **The pruning map and the survey**, above.
-- **Exit:** the local checks, the oracles and the 15 gate probes green; D14 and D15 landed; CI green on main.
+- **Exit:** the local checks, the oracles and the 15 gate probes green; D15 landed; CI green on main.
 
 ### Phase 1: the copy
 
-1. Land or re-target open arena work first (the Balance Lab, any fighter branch). Both repositories share the
-   history, so a branch made before the copy can be pushed to either remote afterwards.
+1. Land the open Duel work first, so the copy carries it: PRs #21, #22 and #23 (the owner's condition). A branch made
+   before the copy can still be pushed to either remote afterwards, since both repositories share the history.
 2. Create `falvarez1/clashforged` (private) and push `main` with its history and tags, but not the other branches.
 3. Disable GitHub Actions on the new repository until Phase 4 gives it its own CI and deploy. Otherwise the first
    push runs Descent's probes and a GitHub Pages deploy.
 4. Clone it to `Y:\Projects\clashforged`, with its worktrees in `Y:\Projects\clashforged-worktrees\`.
 5. Move the untracked Duel sprite library (`Y:\Projects\alchemists-descent-worktrees\sprite-library`, 986 MB, never in
    git) to `docs/arena/platform-fighter/sprite-library` in that checkout, where it stays ignored.
+6. Seed Claude's memory for the new checkout (it is per path) with the arena, fighter, Duel and split notes.
+7. **In Descent, hide the Duel and Arena doors** on the title right away. Since `dff9d1a` the player build offers the
+   Duel, and from the copy on Descent's copy of it only goes stale. The rest of Phase 2 waits until the owner returns to
+   Descent.
 
 - **Exit:** both repositories build, test and pass their gate probes, unchanged (each still holds the whole game).
 - **Downstream: the Balance Lab's first parts start in the new repository the day this phase lands** (D16;
