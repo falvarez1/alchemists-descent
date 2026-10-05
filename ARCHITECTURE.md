@@ -49,9 +49,11 @@ src/
     stamps.ts             Pure structural cell stamp helpers
     cellPatch.ts          Sparse cell diff: the Builder's undo payload AND the
                           AuthorLink terrain wire format (apply/bounds/validate)
-    worldLayer.ts         EditorWorldLayer codec (capture/apply/repaint). Colors are
-                          re-derived from the paint seed, not shipped, so a whole
-                          1600x1064 cave world serializes to ~75 KB
+    worldLayer.ts         EditorWorldLayer codec (capture/apply). Version 2 ships the
+                          rle, the world's paint descriptor and only the cells whose
+                          colour differs from sim/worldPaint (packed runs), so a
+                          fresh 1600x1064 cave world serializes to ~80 KB
+    legacyPaintV1.ts      The frozen version-1 repaint old layers' overrides assume
   net/                   Optional realtime layer; no Ctx, no World, no DOM but WebSocket
     authorLinkProtocol.ts  Envelope, message union, payload validators, size caps
     AuthorLinkClient.ts    Socket lifecycle, reconnect, heartbeat, echo drop
@@ -68,7 +70,10 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
   sim/                  Cellular automata
     CellType.ts           Append-only Cell ids + material classification predicates
     World.ts              Flat typed-array grid state (types/colors/life/moved/charge)
-    colors.ts             Packed-RGB color factories per material
+    colors.ts             Packed-RGB color factories per material (tint source swappable)
+    worldPaint.ts         THE paint: a cell's generated colour as a pure function of
+                          the final grid + a descriptor; every generator ends with it
+                          and the world-layer codec repaints with it (D14)
     Simulation.ts         Fixed-step accumulator + per-tick dispatcher (bottom-up sweep);
                           hands the Sandbox's reclassify + sweep to `parallel` when set
     parallel/             PROTOTYPE multithreaded Sandbox sweep (docs/SANDBOX-MT.md): the
@@ -190,7 +195,6 @@ servers/authorlink/      The relay. room.mjs is the ONE implementation; the Node
     floraPass.ts          Floors 2-4: flora puzzle rooms + dressing on a forked 'flora' stream
     worksFlora.ts         Floor 1's hand-planted flora and the Seed Cellar puzzle
     prefabs/              Built-in PrefabDef registry + seeded placement pass into levels
-    crownPalette.ts       Transcribed crown tint math (Builder crownTint pass)
     fortress.ts           Multi-material real-cell fortress stamp
   builder/                The Builder authoring tool (see docs/BUILDER.md)
     Builder.ts            Editor overlay: tools, canvas, panels, dispatch

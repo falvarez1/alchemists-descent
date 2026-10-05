@@ -105,17 +105,24 @@ explicitly bakes them back in.
 The base world remains a cell grid, but Builder treats it as an editable layer:
 
 ```ts
-interface EditorWorldLayer {
-  rle: string;
-  life?: Array<[number, number]>;
-  charge?: Array<[number, number]>;
-  colorOverrides?: Array<[number, number]>;
+interface EditorWorldLayer {        // version 2 (src/authoring/document.ts has every field)
+  rle: string;                      // the cell types
+  biome?: BiomeId; seed?: number;   // the world's identity
+  paint?: WorldPaint;               // what the colours were painted from (sim/worldPaint)
+  tints?: string;                   // packed runs: cells whose colour differs from the paint
+  scars?: string;                   // packed runs: cells flagged as colour scars
+  lifeRuns?: string; chargeRuns?: string;
 }
 ```
 
-Color overrides are optional and should be used only for authored visual accents.
-Most cells should continue to use material color factories so generated worlds
-remain cheap and readable.
+A cell's generated colour is a pure function of the grid and `paint`, and every
+generator ends by painting its finished grid with that same function, so a
+generated world costs its rle and little else (~80 KB for a sandbox cave, D14).
+Only genuine differences travel: an authored accent, a stamp's own palette, a
+scar, a cell the sim has moved. A layer without `paint` is version 1 (`paintSeed`
+and `[index, colour]` `colorOverrides`, or a whole `colors` plane); it decodes
+with the frozen version-1 repaint (src/authoring/legacyPaintV1.ts), and a world
+restored from one keeps that paint when it is saved again.
 
 ### Objects
 

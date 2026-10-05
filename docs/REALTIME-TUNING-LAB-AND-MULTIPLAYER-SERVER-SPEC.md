@@ -101,12 +101,17 @@ So every window publishes a `WorldIdentity`:
 - **A pull waits for the peer, not the clock** (`src/app/authorLinkPull.ts`). The
   target answers `world.request` at once with a `world.announce`, then sends the
   snapshot. Only that answer has a deadline (20 s: nobody there, or a Duel has
-  the peer suspended). The snapshot itself is ~9 MB today (the paint repaint has
-  drifted from the generator, so the whole color plane ships) and a browser
-  moves it in chunks the page's main thread services between frames: on a
-  window rendering a few frames a second (a GPU-less CI runner) it took 50 s at
-  an 8x CPU throttle. The pull ends when it lands, the link drops, or the room
-  empties; a 10 min ceiling only guards a peer that answered and never sent.
+  the peer suspended). The snapshot is the world's cells: its rle, its paint
+  descriptor, and only the cells whose colour or scar flag differs from the
+  shared paint (sim/worldPaint, D14), with life and charge as packed runs.
+  Measured 2026-10-04 in two real windows: a generated sandbox cave 52-80 KB,
+  the campaign floors 153-414 KB (d1 153, d2 275, d2b 374, d3 414, d3b 236,
+  d4 219), each pulled exactly (types, colours, scar flags) in under 0.6 s. It
+  was ~9.2 MB before (the receiver's repaint had drifted from the generator, so
+  the whole colour plane shipped) and took 50 s on a GPU-less CI runner at an
+  8x CPU throttle, which is why a pull waits for the peer. The pull ends when
+  it lands, the link drops, or the room empties; a 10 min ceiling only guards a
+  peer that answered and never sent.
 
 **A pulled world keeps the SENDER's identity.** After pulling a peer's live
 `d2`, this window holds d2's cells but has no level runtime, so a ctx-derived
@@ -530,8 +535,9 @@ Message types:
 
 `tuning`, `cells`, `cmd`, and the three `world.*` types are relayed; the rest
 are answered by the relay. Size caps are per-type: 512 KB for the incremental
-channels, 16 MB for `world.snapshot`, which is a rare explicit user action and
-falls back to shipping a whole color plane when the paint cannot be re-derived. The relay duplicates the protocol constants rather than importing the
+channels, 16 MB for `world.snapshot`, which is a rare explicit user action (a
+fresh world is ~50-420 KB; the cap leaves room for a heavily edited one, whose
+differences travel as packed runs at ~3 bytes a cell). The relay duplicates the protocol constants rather than importing the
 TypeScript module (it must run under plain Node with no build step);
 `tests/authorlink.test.ts` asserts the two copies agree, because drift there is
 a silent wire break.
