@@ -4,6 +4,7 @@ import { EMPTY_COLOR } from '@/sim/colors';
 import { ActivityGrid } from '@/sim/ActivityGrid';
 import { ColorOverrides } from '@/sim/ColorOverrides';
 import { FluidFlow } from '@/sim/FluidFlow';
+import type { AnyWorldPaint } from '@/sim/worldPaint';
 
 /** The per-cell planes a World can adopt instead of allocating (the
  *  SharedArrayBuffer-backed parallel sandbox: sim/parallel/sharedWorld). */
@@ -102,6 +103,12 @@ export class World {
   readonly colors: Uint32Array;
   /** Sparse color-only scars that must survive expedition save/restore. */
   readonly colorOverrides: ColorOverrides;
+  /**
+   * What this world's generated colours were painted from (sim/worldPaint), or
+   * null for a world nothing painted. A capture paints the grid with it and
+   * ships only the cells that differ; clear() forgets it.
+   */
+  paint: AnyWorldPaint | null = null;
   get mutationVersion(): number { return this.activity.revision + this.colorOverrides.revision; }
   /** Last authoritative tick that could mutate this world; used by snapshot caching. */
   simulationTick = 0;
@@ -322,6 +329,7 @@ export class World {
     this.colorOverrides.clear();
     this.activeCharges.clear();
     this.chargeScanTiles.clear();
+    this.paint = null;
   }
 
   private syncChargeMembership(i: number): void {

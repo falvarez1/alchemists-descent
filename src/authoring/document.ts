@@ -1,5 +1,6 @@
 import type { BackdropSettings, BiomeId } from '@/core/types';
 import type { SpriteAsset } from '@/authoring/sprites';
+import type { AnyWorldPaint } from '@/sim/worldPaint';
 
 /**
  * EditorDocument v2 (docs/BUILDER.md): the durable authoring layer. The
@@ -77,18 +78,37 @@ export interface EditorLight {
   hidden: boolean;
 }
 
+/**
+ * A world's cells (authoring/worldLayer). Version 2 (has `paint`): the cells'
+ * colours are `paint` applied to the grid, then `tints`, with `scars` flagged.
+ * Version 1 (no `paint`): the frozen version-1 repaint from `biome` and
+ * `paintSeed`, then a full `colors` plane or `colorOverrides` pairs.
+ */
 export interface EditorWorldLayer {
   rle: string;
-  /** Biome used to reconstruct generated terrain paint when the layer is restored. */
+  /** The world's biome (its identity; version 1 also painted from it). */
   biome?: BiomeId;
-  /** World seed at capture time; fallback source for old documents with no paintSeed. */
+  /** World seed at capture time (identity; version 1's fallback paint seed). */
   seed?: number;
-  /** CaveGenerator's material/crown paint seed for deterministic biome wall colors. */
+  /** Version 2: what the colours were painted from (sim/worldPaint), or a version-1 descriptor kept on re-save. */
+  paint?: AnyWorldPaint;
+  /** Version 2: packed runs of the cells whose colour differs from the paint (core/rle packColorDiffs). */
+  tints?: string;
+  /** Version 2: packed runs of the cells flagged as colour scars (core/rle packIndexRuns). */
+  scars?: string;
+  /** Version 2: packed runs of the non-zero life plane (core/rle packValueRuns). */
+  lifeRuns?: string;
+  /** Version 2: packed runs of the non-zero charge plane. */
+  chargeRuns?: string;
+  /** Version 1: CaveGenerator's material/crown paint seed. */
   paintSeed?: number;
+  /** Version 1: [index, life] pairs. */
   life?: Array<[number, number]>;
+  /** Version 1: [index, charge] pairs. */
   charge?: Array<[number, number]>;
-  /** Optional full packed-color plane for generated layers whose paint is not sparse. */
+  /** Version 1: a full packed-color plane, for a layer whose differences were not sparse. */
   colors?: string;
+  /** Version 1: [index, colour] cells that differed from the repaint, each flagged as a scar. */
   colorOverrides?: Array<[number, number]>;
 }
 

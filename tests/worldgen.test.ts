@@ -118,14 +118,18 @@ describe('worldgen determinism', () => {
     const layer = captureWorldLayer(sourceCtx);
     expect(layer.biome).toBe('earthen');
     expect(layer.seed).toBe(123456789);
-    expect(layer.paintSeed).toBe(gen.paintSeed);
+    // The world carries what it was painted from (sim/worldPaint); the layer ships it.
+    expect(layer.paint).toEqual(source.paint);
+    expect(layer.paint).toMatchObject({ v: 2, style: 'strata', seed: gen.paintSeed });
 
     const restored = new World();
     const restoreCtx = makeCtx(restored, 1);
     restoreCtx.worldgen = new WorldGen();
     applyWorldLayer(restoreCtx, layer);
 
-    expect(mossyWallCount(restored)).toBeGreaterThan(beforeMoss * 0.75);
+    expect(mossyWallCount(restored)).toBe(beforeMoss);
+    expect(restored.colors).toEqual(source.colors);
+    expect(restored.paint).toEqual(source.paint);
     expect(restored.life[fireIndex]).toBe(321);
   });
 

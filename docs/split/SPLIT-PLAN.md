@@ -2,8 +2,9 @@
 
 Status (in Descent's repository): **Phases 0 and 1 are done.** CLASHFORGED was copied to `falvarez1/clashforged`
 (private) at `84a54fc` on 2026-10-04, after PRs #21, #22 and #23 merged, and its 7 gate probes pass there. Descent's
-title no longer offers the Duel or the Arena. **The owner's focus is CLASHFORGED**; Descent's own work (Phase 2, D13,
-D14) waits here. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
+title no longer offers the Duel or the Arena. **The owner's focus is CLASHFORGED**; Descent's own work (Phase 2, D13)
+waits here. D14 has landed: a world travels as its cells (`src/sim/worldPaint.ts`; pulls and Builder documents
+52-414 KB instead of about 9.2 MB). This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
 says what that plan was and why it was dropped.
 
 The Duel has grown into its own game. The repository is copied in two, and each copy deletes the other game:

@@ -93,7 +93,7 @@ import type { BiomeId, LockKind } from '@/core/types';
  *      unchanged: gilded skips the polish block).
  * v26: LIVING GROUND COVER — walk-through grass (new Cell.Grass=37) plus sparse
  *      glowshroom/fungus tufts are planted on moss-crown walk surfaces
- *      (world/surfaceDress.plantGroundCover, after dressWalkSurface). Real
+ *      (world/surfaceDress.plantGroundCover, on the dressed walk surface). Real
  *      soft-growth cells (bodies pass through; they burn/wither/creep on their
  *      own). Deterministic placement shifts cell types on verdant levels — re-
  *      recorded gen-golden + gen-level-golden (d8 + vault unchanged: not moss-crown).

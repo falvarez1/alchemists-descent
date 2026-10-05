@@ -33,7 +33,25 @@ export function unpackB(c: number): number {
   return c & 0xff;
 }
 
-const rand = (n: number) => Math.floor(fxRandom() * n);
+/**
+ * Where tint draws come from. Normally the fx stream (above); a paint pass
+ * swaps in another source for the length of one call (sim/worldPaint): a
+ * per-cell position hash, so a material's natural colour becomes a pure
+ * function of where the cell is, or a constant while a world generates, so
+ * the generator can tell a natural tint from an authored colour afterwards.
+ * The palettes themselves stay the one definition both uses read.
+ */
+let tintSource: () => number = fxRandom;
+const tint = (): number => tintSource();
+
+/** Install a tint source; returns the previous one, for the caller to restore. */
+export function setTintSource(source: () => number): () => number {
+  const previous = tintSource;
+  tintSource = source;
+  return previous;
+}
+
+const rand = (n: number) => Math.floor(tint() * n);
 
 /** The dark cave-air backdrop color for empty cells. */
 export const EMPTY_COLOR = packRGB(8, 8, 12);
@@ -42,7 +60,7 @@ export const emptyColor = () => EMPTY_COLOR;
 // Sand reads as packed grains, not a flat block: mostly warm tan, with darker
 // grains and pale quartz specks scattered through (same three fx draws).
 export const sandColor = () => {
-  const v = fxRandom(), t = fxRandom(), u = fxRandom();
+  const v = tint(), t = tint(), u = tint();
   if (v < 0.16) return packRGB(156 + Math.floor(t * 22), 118 + Math.floor(t * 18), 68 + Math.floor(u * 14));
   if (v < 0.9) return packRGB(190 + Math.floor(t * 26), 150 + Math.floor(t * 24), 86 + Math.floor(u * 20));
   return packRGB(226 + Math.floor(t * 18), 204 + Math.floor(t * 20), 146 + Math.floor(u * 26));
@@ -69,7 +87,7 @@ export const stoneColor = () => packRGB(85 + rand(15), 80 + rand(15), 85 + rand(
 // to colour the Stone crust that lava chills into under water (a "this was lava"
 // tell) without needing a separate cell — mechanically it's still rock.
 export const obsidianColor = () =>
-  fxRandom() < 0.16
+  tint() < 0.16
     ? packRGB(58 + rand(22), 50 + rand(18), 78 + rand(22))
     : packRGB(24 + rand(12), 21 + rand(10), 31 + rand(13));
 export const metalColor = () => packRGB(105 + rand(10), 115 + rand(10), 130 + rand(10));
@@ -81,7 +99,7 @@ export const vineColor = () => packRGB(35 + rand(15), 165 + rand(25), 55 + rand(
 // Gold dust: a pile reads as metal — shadowed grains, a warm body, bright facets
 // and the odd white-gold glint — instead of one flat saturated yellow.
 export const goldColor = () => {
-  const v = fxRandom(), t = fxRandom();
+  const v = tint(), t = tint();
   if (v < 0.06) return packRGB(255, 238 + Math.floor(t * 17), 168 + Math.floor(t * 50)); // glint
   if (v < 0.3) return packRGB(234 + Math.floor(t * 18), 186 + Math.floor(t * 22), 62 + Math.floor(t * 18)); // facet
   if (v < 0.74) return packRGB(200 + Math.floor(t * 22), 144 + Math.floor(t * 20), 40 + Math.floor(t * 12)); // body
@@ -115,7 +133,7 @@ export const coalColor = () => {
   return packRGB(c, c, c + 3);
 };
 export const crystalColor = () => {
-  const v = fxRandom();
+  const v = tint();
   return packRGB(96 + Math.floor(v * 50), 200 + Math.floor(v * 45), 228 + rand(27));
 };
 export const fungusColor = () => packRGB(40 + rand(20), 190 + rand(35), 150 + rand(30));
@@ -133,7 +151,7 @@ export const grassColor = () => packRGB(96 + rand(40), 160 + rand(40), 52 + rand
 export const marshGasColor = () => packRGB(88 + rand(26), 108 + rand(24), 62 + rand(18));
 // philosopher's dust: rose-gold grains with the occasional white-hot glint
 export const catalystColor = () =>
-  fxRandom() < 0.12
+  tint() < 0.12
     ? packRGB(255, 235 + rand(20), 200 + rand(40))
     : packRGB(240 + rand(15), 140 + rand(40), 70 + rand(30));
 // FLORA. Generic paint for the sandbox brush; worldgen species (world/floraKit)
@@ -149,7 +167,7 @@ export const glowseedColor = () => packRGB(200 + rand(26), 234 + rand(20), 128 +
 // own (Lighting seeds nothing for it), so it sits dark as plain rock until the
 // wizard's beam falls on it and the ~22% gold grains catch the light.
 export const rawOreColor = () =>
-  fxRandom() < 0.22
+  tint() < 0.22
     ? packRGB(226 + rand(24), 174 + rand(26), 46 + rand(22)) // gold fleck
     : packRGB(46 + rand(16), 42 + rand(14), 37 + rand(12)); // dark host rock
 
@@ -158,7 +176,7 @@ export const rawOreColor = () =>
  * the odd white salt glint so a gutter reads as brine at a glance.
  */
 export const brineColor = () =>
-  fxRandom() < 0.02
+  tint() < 0.02
     ? packRGB(214 + rand(26), 236 + rand(16), 238 + rand(14))
     : packRGB(86 + rand(22), 158 + rand(22), 170 + rand(20));
 /**
@@ -166,7 +184,7 @@ export const brineColor = () =>
  * cells catch a whiter glint. (Worldgen stamps its own streaked faces.)
  */
 export const mirrorColor = () =>
-  fxRandom() < 0.12
+  tint() < 0.12
     ? packRGB(236 + rand(16), 242 + rand(12), 248 + rand(7))
     : packRGB(176 + rand(26), 190 + rand(24), 204 + rand(22));
 
@@ -226,3 +244,20 @@ export const COLOR_FN: Record<number, () => number> = {
   [Cell.Brine]: brineColor,
   [Cell.Mirror]: mirrorColor,
 };
+
+/**
+ * Every palette in this module, COLOR_FN's and the variants a writer calls by
+ * name (obsidian, glowseed). sim/worldPaint reads the list to recognise a
+ * natural tint written while a world generated; a palette missing from it is
+ * still painted correctly, it just travels as an authored colour.
+ * tests/world-paint.test.ts holds the list to the module's exports.
+ */
+export const TINT_PALETTES: ReadonlyArray<() => number> = [
+  emptyColor, sandColor, waterColor, wallColor, woodColor, fireColor, oilColor, acidColor, gunpowderColor, steamColor,
+  iceColor, emberColor, lavaColor, stoneColor, obsidianColor, metalColor, smokeColor, vineColor, goldColor,
+  nitrogenColor, bloodColor, slimeColor, elixirLifeColor, elixirLevityColor, elixirStoneColor, elixirSwiftColor,
+  elixirTorchColor, elixirFireColor, elixirFrostColor, elixirShockColor, elixirToxinColor, elixirMightColor,
+  elixirVampireColor, elixirHushColor, toxicColor, healiumColor, teleportiumColor, snowColor, coalColor, crystalColor,
+  fungusColor, glassColor, ashColor, glowshroomColor, mossColor, grassColor, marshGasColor, catalystColor, leafColor,
+  trunkColor, seedColor, glowseedColor, rawOreColor, brineColor, mirrorColor,
+];

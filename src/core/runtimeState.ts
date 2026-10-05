@@ -113,6 +113,8 @@ export function ensureSandboxWorldDetached(ctx: Ctx, reason = 'SANDBOX WORLD DET
     ?? new World(runtime.world.width, runtime.world.height);
   scratch.types.set(runtime.world.types);
   scratch.colors.set(runtime.world.colors);
+  // The copy's colours are the level's paint and its differences, as the level's were.
+  scratch.paint = runtime.world.paint;
   scratch.life.set(runtime.world.life);
   scratch.charge.set(runtime.world.charge);
   scratch.moved.fill(0);

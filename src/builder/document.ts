@@ -1,12 +1,13 @@
 import type { BiomeId, Ctx } from '@/core/types';
-import { base64ToBytes, bytesToBase64, rleDecode, rleEncode } from '@/core/rle';
+import { base64ToBytes, bytesToBase64, rleDecode, rleEncode, unpackColorDiffs, unpackIndexRuns, unpackValueRuns } from '@/core/rle';
 import {
   applyWorldLayer as applyNeutralWorldLayer,
   captureWorldLayer as captureNeutralWorldLayer,
   decodeColorPlaneInto,
   encodeColorPlane,
-  isBiomeId,
+  sanitizeLayerPaint,
 } from '@/authoring/worldLayer';
+import { PLAIN_PAINT } from '@/sim/worldPaint';
 import { HEIGHT, WIDTH } from '@/config/constants';
 import { BIOMES } from '@/config/biomes';
 import { createDefaultBackdropSettings, sanitizeBackdropSettings } from '@/config/backdrop';
@@ -134,12 +135,11 @@ export function createEmptyDocument(name: string, biome: BiomeId): EditorDocumen
 
 /** Snapshot the LIVE world cells into the document's terrain layer. */
 export function captureWorldLayer(ctx: Ctx): EditorWorldLayer {
-  const paintSeed = ctx.worldgen?.paintSeed;
+  // The world's paint descriptor rides on the World (sim/worldPaint).
   return captureNeutralWorldLayer({
     world: ctx.world,
     biome: ctx.state.currentBiome,
     seed: ctx.state.worldSeed >>> 0,
-    paintSeed: typeof paintSeed === 'number' && Number.isFinite(paintSeed) ? paintSeed : null,
   });
 }
 
@@ -310,16 +310,46 @@ function sanitizeWorldLayer(value: unknown): EditorWorldLayer | null {
       dirty = true;
     }
   }
-  return {
+  const common = {
     rle: dirty ? rleEncode(decoded) : layer.rle,
     ...(isBiomeId(layer.biome) ? { biome: layer.biome } : {}),
     ...(num(layer.seed) ? { seed: Math.floor(layer.seed) >>> 0 } : {}),
-    ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
+  };
+  if (layer.paint !== undefined) {
+    // Version 2: the descriptor and the packed planes. A descriptor this
+    // build cannot paint still marks the layer as version 2 (its tints are not
+    // version-1 pairs); it decodes against the plain paint.
+    const n = WIDTH * HEIGHT;
+    const tints = sanitizePacked(layer.tints, (s) => unpackColorDiffs(s, new Uint32Array(n)));
+    const scars = sanitizePacked(layer.scars, (s) => unpackIndexRuns(s, n, () => undefined));
+    const lifeRuns = sanitizePacked(layer.lifeRuns, (s) => unpackValueRuns(s, n, () => undefined));
+    const chargeRuns = sanitizePacked(layer.chargeRuns, (s) => unpackValueRuns(s, n, () => undefined));
+    return {
+      ...common,
+      paint: sanitizeLayerPaint(layer.paint) ?? PLAIN_PAINT,
+      ...(tints ? { tints } : {}),
+      ...(scars ? { scars } : {}),
+      ...(lifeRuns ? { lifeRuns } : {}),
+      ...(chargeRuns ? { chargeRuns } : {}),
+    };
+  }
+  return {
+    ...common,
     life: sanitizeSparsePairs(layer.life, DOC_SPARSE_CAP, -32768, 32767),
     charge: sanitizeSparsePairs(layer.charge, DOC_SPARSE_CAP, 0, 65535),
+    ...(num(layer.paintSeed) ? { paintSeed: clampInt(layer.paintSeed, 0, 99999) } : {}),
     colors: sanitizeColorPlane(layer.colors),
     colorOverrides: sanitizeSparsePairs(layer.colorOverrides, DOC_SPARSE_CAP, 0, 0xffffff),
   };
+}
+
+/** A packed-runs string that decodes cleanly, or undefined. */
+function sanitizePacked(value: unknown, decodes: (s: string) => boolean): string | undefined {
+  return typeof value === 'string' && value.length > 0 && decodes(value) ? value : undefined;
+}
+
+function isBiomeId(value: unknown): value is BiomeId {
+  return typeof value === 'string' && Object.hasOwn(BIOMES, value);
 }
 
 function sanitizeColorPlane(value: unknown): string | undefined {

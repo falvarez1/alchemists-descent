@@ -1,50 +1,71 @@
 import type { BiomeId } from '@/core/types';
 import type { EditorWorldLayer } from '@/authoring/document';
-import { base64ToBytes, bytesToBase64, rleDecodeExact, rleEncode, sparsePairs } from '@/core/rle';
-import { HEIGHT, WIDTH } from '@/config/constants';
-import { BIOMES } from '@/config/biomes';
-import { clamp, hash2, valueNoise } from '@/core/math';
+import {
+  base64ToBytes,
+  bytesToBase64,
+  packColorDiffs,
+  packIndexRuns,
+  packValueRuns,
+  rleDecodeExact,
+  rleEncode,
+  unpackColorDiffs,
+  unpackIndexRuns,
+  unpackValueRuns,
+} from '@/core/rle';
 import { Cell } from '@/sim/CellType';
-import { COLOR_FN, EMPTY_COLOR, packRGB } from '@/sim/colors';
+import type { ColorOverrides } from '@/sim/ColorOverrides';
 import { World } from '@/sim/World';
-import { crownDeepTint, crownFringeTint, crownTopColor, mossUnderColor } from '@/world/crownPalette';
-import { dressWalkSurface } from '@/world/surfaceDress';
+import {
+  PLAIN_PAINT,
+  paintCells,
+  sanitizeWorldPaint,
+  type AnyWorldPaint,
+  type LegacyPaintV1,
+  type PaintGrid,
+} from '@/sim/worldPaint';
+import { isLegacyBiome, legacyFallbackSeed, paintLegacyV1 } from '@/authoring/legacyPaintV1';
 
 /**
  * The world-layer codec: live cell grid <-> `EditorWorldLayer`.
  *
- * This used to live in `src/builder/document.ts` next to the Builder's save
- * code. It moved here because it has a second consumer now — AuthorLink sends
- * a whole world to another window when the two are on different levels — and
- * `src/net`/`src/app` may not import `src/builder`. Duplicating the paint
- * routine was not an option: `repaintWorldLayer` is a deterministic
- * reconstruction of the cave generator's tinting, and a second copy would
- * drift the first time the palette changed.
+ * Two consumers: the Builder's documents (src/builder/document.ts) and
+ * AuthorLink, which sends a whole world to another window when the two are on
+ * different levels (src/app/AuthorLink.ts; `src/net`/`src/app` may not import
+ * `src/builder`, so the codec lives here).
  *
- * WHY THE REPAINT EXISTS AT ALL. A generated cave world carries ~200k
- * per-cell color scars (biome banding, crown tints, moss). Shipping those
- * literally is ~2.5 MB of pairs, or 6.6 MB for the raw plane. Instead the
- * layer stores the *paint seed*, the receiver re-derives the same colors, and
- * only genuine differences — blood, burn scars, authored accents — travel as
- * sparse overrides. A 1600x1064 cave world costs ~75 KB on the wire that way.
+ * A WORLD TRAVELS AS ITS CELLS. A cell's generated colour is a pure function of
+ * the final grid and a small paint descriptor (sim/worldPaint), and every
+ * generator ends by painting its finished grid with that function, so the
+ * colours it leaves are the function's output by construction. The layer
+ * therefore carries the cell types (rle), the descriptor (`paint`), and only
+ * the cells whose colour differs from what the paint gives: authored colours, a
+ * stamp's own palette, scars, cells the sim has moved since (`tints`, packed
+ * runs), plus which cells are flagged as scars for the renderer (`scars`), and
+ * the life and charge planes as packed runs too (`lifeRuns`, `chargeRuns`). The
+ * receiver paints the same grid with the same function and lays the
+ * differences on top. A fresh 1600x1064 world costs its rle and a few KB.
  *
- * KNOWN DRIFT (measured 2026-10-04): the generator has since grown passes
- * this repaint does not replay (rock consolidation/de-speckle fills shade
- * rock by the PRE-fill air distance, walk-surface dressing, ground cover), so
- * ~1.19M of 1.34M wall cells differ, the sparse diff overflows SPARSE_CAP and
- * the whole color plane ships: ~9.2 MB per layer instead of ~75 KB.
+ * Measured 2026-10-04, before: the receiver re-derived the generator's tint
+ * with its own copy of it, which had fallen behind (rock shaded by the pre-fill
+ * distance to air, the dressed walk surface, ground cover), so ~1.19M of 1.34M
+ * rock cells differed, the diff overflowed and the whole colour plane shipped:
+ * ~9.2 MB per layer. There is no second copy now, so there is nothing to drift.
+ *
+ * OLD LAYERS (no `paint`): paint version 1. Their `colorOverrides` pairs were
+ * computed against the version-1 repaint, which is kept frozen in
+ * authoring/legacyPaintV1 and used for them, and their full `colors` plane,
+ * when they carry one, still decodes exactly. A world restored from one keeps
+ * that paint, so saving it again stays as small as it was.
  *
  * The functions take a narrow surface rather than `Ctx` so the neutral layer
  * stays free of runtime services (boundary-enforced).
  */
 
-/** Everything the codec needs to read a world out. */
+/** Everything the codec needs to read a world out (its paint descriptor rides on the World). */
 export interface WorldLayerSource {
   world: World;
   biome: BiomeId;
   seed: number;
-  /** CaveGenerator's last paint seed, or null when the world was not generated. */
-  paintSeed: number | null;
 }
 
 /** Everything the codec needs to write a world back; fallbacks for old layers. */
@@ -54,31 +75,27 @@ export interface WorldLayerTarget {
   seed: number;
 }
 
-/** Sparse-pair budget for one document/message; beyond it the plane is sent whole. */
-const SPARSE_CAP = 200_000;
-
 /** Snapshot the LIVE world cells into a terrain layer. */
 export function captureWorldLayer(src: WorldLayerSource): EditorWorldLayer {
   const w = src.world;
-  // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
-  const life: Array<[number, number]> = [];
-  for (let i = 0; i < w.life.length && life.length < SPARSE_CAP; i++) {
-    if (w.life[i] === 0) continue;
-    const t = w.types[i];
-    if (t === Cell.Smoke || t === Cell.Steam) continue;
-    life.push([i, w.life[i]]);
-  }
+  const paint = w.paint ?? PLAIN_PAINT;
   const layer: EditorWorldLayer = {
     rle: rleEncode(w.types),
     biome: src.biome,
     seed: src.seed >>> 0,
-    life,
-    charge: sparsePairs(w.charge, 20000),
+    paint: structuredClone(paint),
   };
-  if (typeof src.paintSeed === 'number' && Number.isFinite(src.paintSeed)) layer.paintSeed = src.paintSeed;
-  const colorDiffs = captureColorDiffs(src, layer);
-  if (colorDiffs.truncated) layer.colors = encodeColorPlane(w.colors);
-  else if (colorDiffs.pairs.length > 0) layer.colorOverrides = colorDiffs.pairs;
+  // Transient gas life is noise; keep authored/fire life so generated braziers survive restore.
+  const life = packValueRuns(w.life, (i) => w.types[i] !== Cell.Smoke && w.types[i] !== Cell.Steam);
+  if (life) layer.lifeRuns = life;
+  const charge = packValueRuns(w.charge);
+  if (charge) layer.chargeRuns = charge;
+  const base = new Uint32Array(w.colors.length);
+  paintBase(w, paint, base, null);
+  const tints = packColorDiffs(w.colors, base);
+  if (tints) layer.tints = tints;
+  const scars = packIndexRuns(w.colorOverrides.mask);
+  if (scars) layer.scars = scars;
   return layer;
 }
 
@@ -93,16 +110,66 @@ export function applyWorldLayer(target: WorldLayerTarget, layer: EditorWorldLaye
   } catch {
     return;
   }
-  repaintWorldLayer(target, layer);
-  if (layer.colors) decodeColorPlaneInto(layer.colors, w.colors);
+  if (layer.paint !== undefined) applyPaintedLayer(w, layer);
+  else applyLegacyLayer(target, layer);
+  const n = w.types.length;
   for (const [i, v] of layer.life ?? []) w.life[i] = v;
   for (const [i, v] of layer.charge ?? []) w.setChargeAt(i, v);
+  if (typeof layer.lifeRuns === 'string') unpackValueRuns(layer.lifeRuns, n, (i, v) => { w.life[i] = v; });
+  if (typeof layer.chargeRuns === 'string') unpackValueRuns(layer.chargeRuns, n, (i, v) => w.setChargeAt(i, v));
+}
+
+/** A version-2 layer: paint the grid, lay the differences on, flag the scars. */
+function applyPaintedLayer(w: World, layer: EditorWorldLayer): void {
+  const paint = sanitizeLayerPaint(layer.paint) ?? PLAIN_PAINT;
+  paintBase(w, paint, w.colors, null);
+  if (typeof layer.tints === 'string') unpackColorDiffs(layer.tints, w.colors);
+  if (typeof layer.scars === 'string') {
+    const n = w.colors.length;
+    unpackIndexRuns(layer.scars, n, (i) => w.colorOverrides.add(i));
+  }
+  w.paint = paint;
+}
+
+/** A layer from before the shared paint: the frozen version-1 repaint, then its plane or its pairs. */
+function applyLegacyLayer(target: WorldLayerTarget, layer: EditorWorldLayer): void {
+  const w = target.world;
+  const paint = legacyPaintOf(layer, target);
+  // Version 1 flagged the dressed walk surface as scars on a decode; so does its frozen repaint.
+  paintLegacyV1(w, paint, w.colors, w.colorOverrides);
+  if (layer.colors) decodeColorPlaneInto(layer.colors, w.colors);
   for (const [i, c] of layer.colorOverrides ?? []) {
     w.colors[i] = c;
     // Register the scar so World.swap carries the authored tint instead of
     // regenerating the factory color on the cell's first move.
     w.colorOverrides.add(i);
   }
+  w.paint = paint;
+}
+
+function legacyPaintOf(layer: EditorWorldLayer, target: WorldLayerTarget): LegacyPaintV1 {
+  const biome = isLegacyBiome(layer.biome) ? layer.biome : target.biome;
+  const seed = Number.isFinite(layer.paintSeed)
+    ? Math.floor(layer.paintSeed as number)
+    : legacyFallbackSeed(layer.seed ?? target.seed, biome);
+  return { v: 1, seed, biome };
+}
+
+function paintBase(grid: PaintGrid, paint: AnyWorldPaint, out: Uint32Array, scars: ColorOverrides | null): void {
+  if (paint.v === 1) paintLegacyV1(grid, paint, out, scars);
+  else paintCells(grid, paint, out);
+}
+
+/** A layer's paint descriptor, rebuilt field by field; null when it is not one this codec paints. */
+export function sanitizeLayerPaint(value: unknown): AnyWorldPaint | null {
+  const v2 = sanitizeWorldPaint(value);
+  if (v2) return v2;
+  if (typeof value !== 'object' || value === null) return null;
+  const legacy = value as Partial<LegacyPaintV1>;
+  if (legacy.v !== 1 || !isLegacyBiome(legacy.biome)) return null;
+  const seed = legacy.seed;
+  if (typeof seed !== 'number' || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
+  return { v: 1, seed, biome: legacy.biome };
 }
 
 /** Exported for the document sanitizer, which round-trips an untrusted plane. */
@@ -122,157 +189,3 @@ export function decodeColorPlaneInto(encoded: string, colors: Uint32Array): bool
   }
 }
 
-function captureColorDiffs(
-  src: WorldLayerSource,
-  layer: EditorWorldLayer,
-): { pairs: Array<[number, number]>; truncated: boolean } {
-  const source = src.world;
-  const repainted = new World(source.width, source.height);
-  repainted.types.set(source.types);
-  repaintWorldLayer({ world: repainted, biome: src.biome, seed: src.seed }, layer);
-
-  const pairs: Array<[number, number]> = [];
-  for (let i = 0; i < source.colors.length; i++) {
-    if (source.colors[i] === repainted.colors[i] && !source.colorOverrides.has(i)) continue;
-    if (pairs.length >= SPARSE_CAP) return { pairs, truncated: true };
-    pairs.push([i, source.colors[i]]);
-  }
-  return { pairs, truncated: false };
-}
-
-function repaintWorldLayer(target: WorldLayerTarget, layer: EditorWorldLayer): void {
-  const world = target.world;
-  const biome = isBiomeId(layer.biome) ? layer.biome : target.biome;
-  const B = BIOMES[biome] ?? BIOMES.earthen;
-  const seed = Number.isFinite(layer.paintSeed)
-    ? Math.floor(layer.paintSeed as number)
-    : fallbackPaintSeed(layer.seed ?? target.seed, biome);
-  const dist = new Uint8Array(WIDTH * HEIGHT).fill(99);
-  const queue = new Int32Array(WIDTH * HEIGHT);
-  let head = 0;
-  let tail = 0;
-
-  for (let x = 0; x < WIDTH; x++) {
-    for (let y = 0; y < HEIGHT; y++) {
-      const i = x + y * WIDTH;
-      if (world.types[i] !== Cell.Wall) {
-        dist[i] = 0;
-        queue[tail++] = i;
-      }
-    }
-  }
-  while (head < tail) {
-    const i = queue[head++];
-    const nextDist = dist[i] + 1;
-    if (nextDist > 13) continue;
-    const x = i % WIDTH;
-    if (x + 1 < WIDTH) tail = enqueueWall(i + 1, nextDist, world.types, dist, queue, tail);
-    if (x > 0) tail = enqueueWall(i - 1, nextDist, world.types, dist, queue, tail);
-    if (i + WIDTH < world.types.length) tail = enqueueWall(i + WIDTH, nextDist, world.types, dist, queue, tail);
-    if (i >= WIDTH) tail = enqueueWall(i - WIDTH, nextDist, world.types, dist, queue, tail);
-  }
-
-  for (let x = 0; x < WIDTH; x++) {
-    for (let y = 0; y < HEIGHT; y++) {
-      const i = x + y * WIDTH;
-      const t = world.types[i];
-      if (t === Cell.Empty) {
-        world.colors[i] = EMPTY_COLOR;
-      } else if (t === Cell.Wall) {
-        world.colors[i] = biomeWallColor(x, y, dist[i], seed, B.bands);
-      } else {
-        const fn = COLOR_FN[t];
-        world.colors[i] = fn ? fn() : EMPTY_COLOR;
-      }
-    }
-  }
-
-  for (let x = 0; x < WIDTH; x++) {
-    for (let y = 1; y < HEIGHT - 1; y++) {
-      const i = x + y * WIDTH;
-      if (world.types[i] !== Cell.Wall) continue;
-      const topish =
-        world.types[x + (y - 1) * WIDTH] === Cell.Empty &&
-        (y < 2 || world.types[x + (y - 2) * WIDTH] === Cell.Empty);
-      const nbTop = (xx: number): boolean =>
-        xx >= 0 &&
-        xx < WIDTH &&
-        world.types[xx + y * WIDTH] === Cell.Wall &&
-        world.types[xx + (y - 1) * WIDTH] === Cell.Empty;
-      if (topish && (nbTop(x - 1) || nbTop(x + 1))) {
-        world.colors[i] = crownTopColor(x, y, seed, B.crown, B.flowerChance);
-        if (B.crown === 'moss') {
-          if (world.types[x + (y + 1) * WIDTH] === Cell.Wall) {
-            world.colors[x + (y + 1) * WIDTH] = mossUnderColor(x, seed);
-          }
-          if (y + 2 < HEIGHT && world.types[x + (y + 2) * WIDTH] === Cell.Wall) {
-            const i2 = x + (y + 2) * WIDTH;
-            const c = crownDeepTint(world.colors[i2], x, y, seed, B.crown);
-            if (c !== null) world.colors[i2] = c;
-          }
-        } else if (B.crown === 'frost' && world.types[x + (y + 1) * WIDTH] === Cell.Wall) {
-          const i2 = x + (y + 1) * WIDTH;
-          const c = crownDeepTint(world.colors[i2], x, y, seed, B.crown);
-          if (c !== null) world.colors[i2] = c;
-        }
-      } else if (
-        world.types[x + (y + 1) * WIDTH] === Cell.Empty &&
-        world.types[x + Math.min(HEIGHT - 1, y + 2) * WIDTH] === Cell.Empty
-      ) {
-        const c = crownFringeTint(world.colors[i], x, y, seed, B.crown);
-        if (c !== null) world.colors[i] = c;
-      }
-    }
-  }
-
-  dressWalkSurface(world, {
-    seed,
-    minY: 2,
-    floorBand: HEIGHT - 52,
-    crown: B.crown,
-    flowerChance: B.flowerChance,
-  });
-}
-
-function enqueueWall(
-  i: number,
-  d: number,
-  types: Uint8Array,
-  dist: Uint8Array,
-  queue: Int32Array,
-  tail: number,
-): number {
-  if (types[i] !== Cell.Wall || dist[i] <= d) return tail;
-  dist[i] = d;
-  queue[tail] = i;
-  return tail + 1;
-}
-
-function biomeWallColor(
-  x: number,
-  y: number,
-  dist: number,
-  seed: number,
-  bands: ReadonlyArray<readonly [number, number, number]>,
-): number {
-  let m = valueNoise(x, y, 0.014, seed);
-  m = clamp((m - 0.5) * 2.1 + 0.5, 0, 1);
-  const grain = 0.85 + valueNoise(x, y, 0.12, seed + 5) * 0.3;
-  const band = m < 0.4 ? bands[0] : m < 0.58 ? bands[1] : m < 0.84 ? bands[2] : bands[3];
-  const shade = dist <= 2 ? 1.08 : dist <= 4 ? 0.88 : dist <= 6 ? 0.7 : dist <= 8 ? 0.58 : dist <= 10 ? 0.5 : 0.44;
-  const jit = 0.92 + hash2(x, y, seed + 11) * 0.16;
-  return packRGB(
-    Math.min(255, Math.floor(band[0] * grain * shade * jit)),
-    Math.min(255, Math.floor(band[1] * grain * shade * jit)),
-    Math.min(255, Math.floor(band[2] * grain * shade * jit)),
-  );
-}
-
-function fallbackPaintSeed(seed: number | undefined, biome: BiomeId): number {
-  const s = Number.isFinite(seed) ? (seed as number) >>> 0 : 0;
-  return Math.floor(hash2(s & 0xffff, (s >>> 16) ^ biome.length, 0x51f15e) * 100000);
-}
-
-export function isBiomeId(value: unknown): value is BiomeId {
-  return typeof value === 'string' && value in BIOMES;
-}
