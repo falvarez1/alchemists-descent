@@ -221,14 +221,15 @@ function paintStrata(grid: PaintGrid, p: StrataPaint, out: Uint32Array): void {
   const air = (i: number): boolean => OPEN[types[i]] === 1 || (pore !== null && pore[i] === 1);
   const rock = (i: number): boolean => !air(i);
   const paintable = (i: number): boolean => types[i] === Cell.Wall && (pore === null || pore[i] === 0);
+  /** A neighbouring top: rock at (xx, y) with air over it. */
+  const nbTop = (xx: number, y: number): boolean => xx >= 0 && xx < W && rock(xx + y * W) && air(xx + (y - 1) * W);
   const crown = p.crown;
   for (let x = 0; x < W; x++) {
     for (let y = 1; y < H - 1; y++) {
       const i = x + y * W;
       if (!paintable(i)) continue;
       const topish = air(i - W) && (y < 2 || air(i - 2 * W));
-      const nbTop = (xx: number): boolean => xx >= 0 && xx < W && rock(xx + y * W) && air(xx + (y - 1) * W);
-      if (topish && (nbTop(x - 1) || nbTop(x + 1))) {
+      if (topish && (nbTop(x - 1, y) || nbTop(x + 1, y))) {
         out[i] = crownTopColor(x, y, seed, crown, p.flowerChance);
         if (crown === 'moss') {
           if (paintable(i + W)) out[i + W] = mossUnderColor(x, seed);
