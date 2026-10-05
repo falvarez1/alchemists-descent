@@ -4,8 +4,6 @@ import { GAME_SUBTITLE, GAME_TAGLINE, GAME_TITLE } from '@/config/brand';
 import { FLOORS_TOTAL } from '@/config/worldgraph';
 import { formatRunTime } from '@/game/runRules';
 import { PlayerSettings } from '@/ui/PlayerSettings';
-import { openFighterRoster } from '@/ui/fighterRosterHost';
-import type { FighterId } from '@/content/fighters';
 import { KIT_DEFS, KIT_ORDER } from '@/content/kits';
 import { MAX_MUTATORS, MUTATOR_DEFS, MUTATOR_ORDER, cleanMutators, mutatorNames, type MutatorId } from '@/content/mutators';
 import { DIFFICULTY, DIFFICULTY_ORDER } from '@/config/difficulty';
@@ -62,10 +60,6 @@ export class ExpeditionEntry {
   private launching = false;
   private unlockedKits = new Set<KitId>(['spark']);
   private selectedKit: KitId = 'spark';
-  /** The fighter the Arena door last started with (the profile remembers it): the campaign never uses one. */
-  private arenaFighter: FighterId | null = null;
-  /** Which arena the Arena doors open: the Proving Yard (every move, one fighter) or the Duel Stage (two fighters, one room). */
-  private arenaLevel: 'fighter-test' | 'fighter-duel' = 'fighter-test';
   private selectedDifficulty: Difficulty = BASE_DIFFICULTY;
   private bestVictory = 0;
   private chosenSeed: ChosenSeed | null = null;
@@ -169,17 +163,9 @@ export class ExpeditionEntry {
       id: 'daily', label: 'Today’s descent', kind: 'action', sub: daily?.sub, hint: daily?.hint,
       activate: () => void this.launch('daily'),
     });
-    items.push({
-      id: 'duel', label: 'Duel', kind: 'action', sub: 'Local versus · Four stages',
-      hint: 'Three stocks. Fight a friend or a CPU rival. Your descent stays saved.',
-      activate: () => this.ctx.versus?.open(),
-    });
+    // No Duel or Arena door: the Duel is its own game now (CLASHFORGED, its own repository; docs/split/SPLIT-PLAN.md).
+    // The arena code still in this repository is unreachable from the title and goes in split phase 2.
     if (__AUTHORING__) {
-      items.push({
-        id: 'arena', label: 'Arena', kind: 'action', sub: 'The Proving Yard',
-        hint: 'Pick a fighter and walk through every move. Your descent is left as it is.',
-        activate: () => this.openArena('fighter-test'),
-      });
       items.push({ id: 'workshops', label: 'Workshops', kind: 'drill', hint: 'The material sandbox, the level builder and the advanced run setup.', activate: () => this.menu.push('workshops') });
     } else if (this.workshopUnlocked) {
       items.push({ id: 'workshop', label: 'The Workshop', kind: 'action', hint: 'The material sandbox. Nothing here can hurt you, much.', activate: () => this.openWorkshop('workshop') });
@@ -352,21 +338,6 @@ export class ExpeditionEntry {
     this.menu.refresh();
   }
 
-  /** The Arena door: the Fighter Roster over the title; choosing a fighter starts the Proving Yard as them, Back returns to the door. */
-  private openArena(level: 'fighter-test' | 'fighter-duel'): void {
-    this.arenaLevel = level;
-    openFighterRoster(
-      this.ctx,
-      this.arenaFighter,
-      (id) => {
-        this.arenaFighter = id;
-        this.ctx.run?.chooseFighter(id);
-        void this.launch('arena', undefined, id);
-      },
-      () => this.menu.focusItem(level === 'fighter-duel' ? 'duel' : 'arena'),
-    );
-  }
-
   private useSeed(): void {
     const typed = this.seed.parsed();
     if (!typed) return;
@@ -413,7 +384,6 @@ export class ExpeditionEntry {
     this.unlockedKits = new Set<KitId>(['spark', ...(view?.unlockedKits ?? [])]);
     const lastKit = view?.lastKit ?? 'spark';
     this.selectedKit = this.unlockedKits.has(lastKit) ? lastKit : 'spark';
-    this.arenaFighter = view?.lastFighter ?? null;
     this.bestVictory = view?.bestVictoryDifficulty ?? 0;
     this.selectedDifficulty = openDifficulty(view?.lastDifficulty ?? BASE_DIFFICULTY, this.bestVictory);
     this.mutators = cleanMutators(view?.lastMutators ?? []);
@@ -455,10 +425,9 @@ export class ExpeditionEntry {
     this.show();
   };
 
-  private async launch(kind: 'continue' | 'begin' | 'daily' | 'arena', seed?: number, fighter: FighterId | null = null): Promise<void> {
+  private async launch(kind: 'continue' | 'begin' | 'daily', seed?: number): Promise<void> {
     if (this.launching) return;
-    // (the Proving Yard is a disposable test run: it never touches the saved descent, so it asks nothing)
-    const replacing = kind !== 'continue' && kind !== 'arena' && this.saved();
+    const replacing = kind !== 'continue' && this.saved();
     if (replacing) {
       const agreed = await appDialog.confirm(
         kind === 'daily'
@@ -473,7 +442,7 @@ export class ExpeditionEntry {
     for (const button of buttons) button.disabled = true;
     this.root.querySelector('.entry-status')!.textContent = kind === 'continue'
       ? 'Returning to the Works…'
-      : kind === 'arena' ? (this.arenaLevel === 'fighter-duel' ? 'Opening the Duel Stage…' : 'Opening the Proving Yard…') : launchLine(this.ctx.run?.metaView().runsEnded ?? 0);
+      : launchLine(this.ctx.run?.metaView().runsEnded ?? 0);
     this.ctx.audio.ensure();
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     try {
@@ -481,7 +450,7 @@ export class ExpeditionEntry {
         this.root.querySelector('.entry-status')!.textContent = 'The Works could not finish loading. Refresh the page to try again.';
         return;
       }
-      const started = this.start(kind, seed, fighter);
+      const started = this.start(kind, seed);
       if (started.ok) {
         // A chosen seed is for one descent; the next title starts from a random one.
         if (kind === 'begin') { this.chosenSeed = null; this.seed.clear(); }
@@ -496,11 +465,8 @@ export class ExpeditionEntry {
     }
   }
 
-  private start(kind: 'continue' | 'begin' | 'daily' | 'arena', seed?: number, fighter: FighterId | null = null): RunStartResult {
+  private start(kind: 'continue' | 'begin' | 'daily', seed?: number): RunStartResult {
     const ctx = this.ctx;
-    if (kind === 'arena') {
-      return ctx.levels.startRun(ctx, { mode: 'test', worldSource: 'campaign-level', levelId: this.arenaLevel, loadout: 'advanced', fighter });
-    }
     if (kind === 'continue' || !ctx.run) {
       return ctx.levels.startRun(ctx, { mode: 'normal', worldSource: 'campaign', continueSave: kind === 'continue', loadout: 'fresh' });
     }

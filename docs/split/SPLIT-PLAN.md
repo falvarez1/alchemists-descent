@@ -1,9 +1,9 @@
 # Splitting into two games, in two repositories
 
-Status: **plan, revised 2026-10-04: two repositories, copy first; decisions D9-D16 taken the same day.** Phase 0 on
-`feature/split-phase-0`: main's red-CI causes are fixed, and locally the oracles are identical and all 15 gate probes
-green; `main` is protected (D15). **The owner's focus after the copy is CLASHFORGED**: Descent's own work (Phase 2,
-D13, D14) waits, except hiding its Duel door. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
+Status (in Descent's repository): **Phases 0 and 1 are done.** CLASHFORGED was copied to `falvarez1/clashforged`
+(private) at `84a54fc` on 2026-10-04, after PRs #21, #22 and #23 merged, and its 7 gate probes pass there. Descent's
+title no longer offers the Duel or the Arena. **The owner's focus is CLASHFORGED**; Descent's own work (Phase 2, D13,
+D14) waits here. This version replaces the monorepo plan (PR #20, `e81d94e`); section 8
 says what that plan was and why it was dropped.
 
 The Duel has grown into its own game. The repository is copied in two, and each copy deletes the other game:
